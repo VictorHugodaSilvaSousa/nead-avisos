@@ -121,3 +121,11 @@ def test_client_refuses_non_read_functions():
         Moodle("https://x", "t").call("core_message_send_instant_messages")
     writes = {"send", "update", "create", "delete", "set", "submit", "save", "mark", "add"}
     assert not [f for f in READ_ONLY_FUNCTIONS if writes & set(f.split("_"))]
+
+
+def test_silent_first_run_sends_nothing(tmp_path):
+    s = Settings()
+    s.silent_first_run = True
+    m, state = FakeMoodle(), State(tmp_path / "s.json")
+    assert Collector(s, m, state, NOW).run() == []
+    assert "digest:2026-10-03" in state.data["seen"]          # o resumo de hoje não sai depois

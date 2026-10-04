@@ -39,6 +39,7 @@ jobs:
           NEAD_AVISOS_TELEGRAM_CHAT_ID: ${{ vars.NEAD_AVISOS_TELEGRAM_CHAT_ID }}
           NEAD_AVISOS_TELEGRAM_GROUP_ID: ${{ vars.NEAD_AVISOS_TELEGRAM_GROUP_ID }}
           NEAD_AVISOS_DATA_DIR: data
+          NEAD_AVISOS_PRIMEIRA_EXECUCAO_SILENCIOSA: "1"
         run: nead-avisos run
       - name: Salvar estado
         if: always()

@@ -214,7 +214,9 @@ def _run(s: Settings, dry_run: bool) -> int:
             failed += 1
             state.data.get("seen", {}).pop(n.key, None)    # não enviado: tenta de novo na próxima
     if col.first_run and tg and s.telegram_chat_id:
-        tg.send_text(s.telegram_chat_id, f"✅ <b>NEAD Avisos ativado</b>\nAcompanhando "
+        import os
+        where = " na nuvem (funciona com o PC desligado)" if os.environ.get("GITHUB_ACTIONS") else ""
+        tg.send_text(s.telegram_chat_id, f"✅ <b>NEAD Avisos ativado{where}</b>\nAcompanhando "
                                          f"{len(state.data.get('courses', {}))} sala(s). A partir de agora você recebe "
                                          "só as novidades.")
     state.prune(now)

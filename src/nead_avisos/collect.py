@@ -126,7 +126,9 @@ class Collector:
         if self.first_run:
             self.state.data["initialized"] = self.now.isoformat()
             baseline = len(self.notices)
-            self.notices = [n for n in self.notices if n.key.startswith("digest:")]
+            # Na nuvem (ou quando já existe outra instalação), a 1ª execução fica TOTALMENTE silenciosa:
+            # o resumo do dia já pode ter sido enviado pela instalação do PC.
+            self.notices = [] if self.s.silent_first_run else [n for n in self.notices if n.key.startswith("digest:")]
             self.state.data["baseline_items"] = baseline
         return self.notices
 

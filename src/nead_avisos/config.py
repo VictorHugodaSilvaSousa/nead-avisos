@@ -44,6 +44,7 @@ class Settings:
     exclude_courses: list[int] = field(default_factory=list)
     group_courses: list[int] = field(default_factory=list)     # vazio = mesmas salas acompanhadas
     data_dir: Path = PROJECT_ROOT / "data"
+    silent_first_run: bool = False             # 1ª execução sem nenhum envio (ex.: ao migrar para a nuvem)
 
     @property
     def tz(self) -> ZoneInfo:
@@ -67,6 +68,7 @@ class Settings:
         s.include_courses = _ints(g("INCLUIR_SALAS"))
         s.exclude_courses = _ints(g("EXCLUIR_SALAS"))
         s.group_courses = _ints(g("SALAS_DO_GRUPO"))
+        s.silent_first_run = g("PRIMEIRA_EXECUCAO_SILENCIOSA", "").lower() in ("1", "true", "sim")
         if g("DATA_DIR"):
             s.data_dir = Path(g("DATA_DIR"))
         return s
