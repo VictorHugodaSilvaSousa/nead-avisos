@@ -18,7 +18,21 @@ notificações, mensagens ou entregas pessoais.
 - A chave fica no Gerenciador de Credenciais do Windows ou, na nuvem, nos *Secrets* do GitHub.
 - Ele acompanha só as salas em que você é **aluno** e que estão em andamento. Salas de mediação e de semestres encerrados ficam de fora.
 
-## 1. Instalar (Windows)
+## Para colegas: sem instalar nada
+
+1. Baixe o **NEAD-Avisos.exe** na página de versões:
+   https://github.com/VictorHugodaSilvaSousa/nead-avisos/releases/latest
+2. Dê **dois cliques** no arquivo. Se o Windows mostrar "O Windows protegeu o computador", clique em
+   **Mais informações → Executar assim mesmo**. O aviso aparece porque o programa é novo e não é assinado.
+3. Siga o assistente, que leva uns 5 minutos:
+   - **seu login** do Moodle: a senha não é guardada;
+   - **seu robô** do Telegram, criado no @BotFather: o assistente lê o token sozinho;
+   - **onde rodar:** neste PC (a cada 15 min, sem janela) ou na nuvem pelo GitHub (funciona com o PC desligado).
+
+Cada pessoa usa **o próprio login e o próprio robô**: ninguém precisa passar senha para ninguém.
+O **grupo da turma** é alimentado só pelo representante. Se cada colega ligasse o grupo, os avisos sairiam repetidos.
+
+## 1. Instalar a partir do código (Windows)
 
 ```powershell
 cd nead-avisos

@@ -235,7 +235,8 @@ def _alert(s: Settings, text: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="nead-avisos", description="Avisos do Moodle do NEAD no Telegram")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub = parser.add_subparsers(dest="cmd")
+    sub.add_parser("assistente", help="configuração passo a passo (abre ao dar dois cliques no .exe)")
     sub.add_parser("setup")
     sub.add_parser("set-telegram")
     sub.add_parser("chats")
@@ -248,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     p_run = sub.add_parser("run")
     p_run.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+    if args.cmd in (None, "assistente"):           # dois cliques no .exe = assistente
+        from .assistente import main as assistente
+        return assistente()
     s = Settings.load()
     if args.cmd == "setup":
         return cmd_setup(s)

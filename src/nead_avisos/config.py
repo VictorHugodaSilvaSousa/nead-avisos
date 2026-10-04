@@ -12,7 +12,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+import sys as _sys
+
+# Como .exe (PyInstaller), configuração e estado ficam em %LOCALAPPDATA%/NEAD-Avisos (pasta do usuário);
+# rodando do código-fonte, na pasta do projeto.
+if getattr(_sys, "frozen", False):
+    PROJECT_ROOT = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NEAD-Avisos"
+    PROJECT_ROOT.mkdir(parents=True, exist_ok=True)
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SERVICE = "nead-avisos"
 
 
