@@ -1,0 +1,48 @@
+# NEAD Avisos na nuvem (GitHub Actions): funciona com o PC DESLIGADO.
+# Segredos (Settings > Secrets and variables > Actions > Secrets):
+#   NEAD_AVISOS_MOODLE_TOKEN    chave do app do Moodle (gerada pelo `nead-avisos setup`; NÃO é a senha)
+#   NEAD_AVISOS_TELEGRAM_TOKEN  token do seu bot
+# Variáveis (aba Variables):
+#   NEAD_AVISOS_TELEGRAM_CHAT_ID, NEAD_AVISOS_TELEGRAM_GROUP_ID (opcional)
+# O estado (só identificadores do que já foi avisado) fica no cache do Actions, nunca no repositório.
+name: NEAD Avisos
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"        # a cada ~20 min (o GitHub pode atrasar alguns minutos)
+  workflow_dispatch: {}           # botão "Run workflow" para testar
+
+concurrency:
+  group: nead-avisos
+  cancel-in-progress: false
+
+jobs:
+  avisos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q .
+      - name: Restaurar estado
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: nead-avisos-state-${{ github.run_id }}
+          restore-keys: nead-avisos-state-
+      - name: Verificar Moodle e avisar
+        env:
+          NEAD_AVISOS_MOODLE_TOKEN: ${{ secrets.NEAD_AVISOS_MOODLE_TOKEN }}
+          NEAD_AVISOS_TELEGRAM_TOKEN: ${{ secrets.NEAD_AVISOS_TELEGRAM_TOKEN }}
+          NEAD_AVISOS_TELEGRAM_CHAT_ID: ${{ vars.NEAD_AVISOS_TELEGRAM_CHAT_ID }}
+          NEAD_AVISOS_TELEGRAM_GROUP_ID: ${{ vars.NEAD_AVISOS_TELEGRAM_GROUP_ID }}
+          NEAD_AVISOS_DATA_DIR: data
+        run: nead-avisos run
+      - name: Salvar estado
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: nead-avisos-state-${{ github.run_id }}
