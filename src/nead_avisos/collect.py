@@ -23,7 +23,8 @@ ACTIVITY_LABEL = {"assign": "Tarefa", "quiz": "Questionário", "forum": "Fórum"
                   "page": "Página", "url": "Link", "folder": "Pasta", "lesson": "Lição", "h5pactivity": "H5P",
                   "questionnaire": "Enquete", "choice": "Escolha", "feedback": "Pesquisa", "book": "Livro",
                   "label": "Rótulo", "glossary": "Glossário", "wiki": "Wiki", "workshop": "Laboratório"}
-SKIP_MODULES = {"label"}            # rótulos são texto solto na página do curso, não "atividade"
+SKIP_MODULES = {"label"}
+MATERIAL_LABELS = {"Arquivo", "Página", "Link", "Pasta", "Livro", "url", "resource", "page", "folder", "book"}            # rótulos são texto solto na página do curso, não "atividade"
 _PREFIX_RE = re.compile(r"^\s*\[[^\]]+\]\s*")
 
 
@@ -46,6 +47,30 @@ _TERM_RE = re.compile(r"(?<!\d)(20\d{2})\s*[/.-]\s*([12])(?!\d)")
 def term_of(name: str) -> str | None:
     m = _TERM_RE.search(name or "")
     return f"{m.group(1)}/{m.group(2)}" if m else None
+
+
+WEEKDAYS = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
+DATE_LABEL = {"allowsubmissionsfromdate": "Abre", "timeopen": "Abre", "timeavailablefrom": "Abre",
+              "duedate": "Prazo", "deadline": "Prazo", "timeclose": "Fecha", "cutoffdate": "Aceita atraso até",
+              "timeavailableto": "Fecha", "gradingduedate": None}
+DUE_KEYS = ("duedate", "timeclose", "deadline", "timeavailableto")
+# Prazos de entrega de verdade. 'expectcompletionon' (data ESPERADA de conclusão, ex.: "Slides ... deve estar
+# concluído") é só sugestão do professor e não entra em lembretes nem em "prazo perdido".
+REAL_DEADLINES = ("due", "close")
+
+
+def h(text) -> str:
+    """Escapa texto que entra numa mensagem com formatação (<b>, <i>, <a>)."""
+    return html.escape("" if text is None else str(text), quote=True)
+
+
+def fmt(dt: datetime) -> str:
+    """'08/10 (qua) 23:59' — dia da semana em português em qualquer sistema (a nuvem roda em inglês)."""
+    return f"{dt:%d/%m} ({WEEKDAYS[dt.weekday()]}) {dt:%H:%M}"
+
+
+def clean_event_name(name: str) -> str:
+    return re.sub(r" (está marcado|vence|é devido|deve ser|should be|is due).*$", "", name or "")
 
 
 def short_course(name: str) -> str:
@@ -123,6 +148,8 @@ class Collector:
         self._notifications()
         self._messages()
         self._daily_digest(courses, group_ids)
+        self._my_digest()
+        self._group_bursts()
         if self.first_run:
             self.state.data["initialized"] = self.now.isoformat()
             baseline = len(self.notices)
@@ -141,22 +168,42 @@ class Collector:
 
     def _new_modules(self, c: dict, aud: str) -> None:
         sections = self.m.call("core_course_get_contents", courseid=c["id"])
+        dues = self.state.data.setdefault("dues", {})
         for sec in sections:
             for mod in sec.get("modules", []):
                 if mod.get("instance") and mod.get("url"):
                     self.instance_url[(mod.get("modname"), mod["instance"])] = mod["url"]
                 if mod.get("modname") in SKIP_MODULES or not mod.get("uservisible", True) or not mod.get("visible", 1):
                     continue
-                if self._seen(f"mod:{mod['id']}"):
-                    continue
-                due = next((d["timestamp"] for d in mod.get("dates", [])
-                            if d.get("dataid") in ("duedate", "timeclose", "deadline")), None)
+                dates = {d.get("dataid"): d.get("timestamp") for d in mod.get("dates", []) if d.get("timestamp")}
+                due = next((dates[k] for k in DUE_KEYS if dates.get(k)), None)
+                key = f"mod:{mod['id']}"
                 label = ACTIVITY_LABEL.get(mod.get("modname"), mod.get("modname", "Item"))
-                body = f"{label} em <b>{sec.get('name') or 'curso'}</b>"
+                course = short_course(c["fullname"])
+                # Prazo alterado pelo professor (só para itens já conhecidos)
+                old_due = dues.get(str(mod["id"]))
                 if due:
-                    body += f"\nPrazo: {datetime.fromtimestamp(due, self.s.tz):%d/%m %H:%M}"
-                self.notices.append(Notice(f"mod:{mod['id']}", aud, "📝", f"Nova atividade: {mod['name']}",
-                                           short_course(c["fullname"]), body, mod.get("url")))
+                    dues[str(mod["id"])] = due
+                if old_due and due and old_due != due and not self.first_run:
+                    before = datetime.fromtimestamp(old_due, self.s.tz)
+                    after = datetime.fromtimestamp(due, self.s.tz)
+                    self.notices.append(Notice(
+                        f"duechange:{mod['id']}:{due}", aud, "📅", f"Prazo alterado: {mod['name']}", course,
+                        f"<s>{h(fmt(before))}</s> → <b>{h(fmt(after))}</b>", mod.get("url"), after))
+                if self._seen(key):
+                    continue
+                lines = [f"{h(label)} · seção <b>{h(sec.get('name') or 'curso')}</b>"]
+                for dataid, ts in dates.items():
+                    name = DATE_LABEL.get(dataid)
+                    if name:
+                        lines.append(f"{name}: {h(fmt(datetime.fromtimestamp(ts, self.s.tz)))}")
+                desc = plain(mod.get("description"), 300)
+                if desc:
+                    lines.append(f"<i>{h(desc)}</i>")
+                self.notices.append(Notice(key, aud, "📝", f"Nova {'atividade' if label not in MATERIAL_LABELS else 'publicação'}: {mod['name']}",
+                                           course, "\n".join(lines), mod.get("url"),
+                                           extra={"kind": "mod", "course": course, "name": mod["name"],
+                                                  "label": label, "due": due}))
 
     def _forum_news(self, courses: list[dict], group_ids: set[int]) -> None:
         forums = self.m.call("mod_forum_get_forums_by_courses", courseids=[c["id"] for c in courses])
@@ -173,7 +220,7 @@ class Collector:
                 self.notices.append(Notice(
                     f"post:{d['discussion']}", aud, "📢", d.get("name") or d.get("subject") or "Aviso",
                     short_course(names.get(f["course"], "")),
-                    f"<i>{d.get('userfullname', '')}</i> · {created:%d/%m %H:%M}\n{plain(d.get('message'))}",
+                    f"<i>{h(d.get('userfullname', ''))}</i> · {h(fmt(created))}\n{h(plain(d.get('message')))}",
                     self.m.url(f"mod/forum/discuss.php?d={d['discussion']}"), created))
 
     def _course_deadlines(self, courses: list[dict], group_ids: set[int]) -> None:
@@ -185,7 +232,7 @@ class Collector:
                                       "timeend": int((self.now + timedelta(days=horizon + 1)).timestamp())})
         names = {c["id"]: c["fullname"] for c in courses}
         for ev in events.get("events", []):
-            if ev.get("eventtype") not in ("due", "close", "expectcompletionon") or not ev.get("modulename"):
+            if ev.get("eventtype") not in REAL_DEADLINES or not ev.get("modulename"):
                 continue
             due = datetime.fromtimestamp(ev["timestart"], self.s.tz)
             days = (due.date() - self.now.date()).days
@@ -195,25 +242,78 @@ class Collector:
             aud = "group" if ev.get("courseid") in group_ids else "me"
             when = "HOJE" if days == 0 else ("amanhã" if days == 1 else f"em {days} dias")
             self.notices.append(Notice(
-                f"due:{ev['id']}:{stage}", aud, "⏰", f"Prazo {when}: {re.sub(r' (está marcado|vence|é devido).*$', '', ev['name'])}",
-                short_course(names.get(ev.get("courseid"), "")), f"Entrega até {due:%d/%m %H:%M}",
+                f"due:{ev['id']}:{stage}", aud, "⏰", f"Prazo {when}: {clean_event_name(ev['name'])}",
+                short_course(names.get(ev.get("courseid"), "")), f"Entrega até {fmt(due)}",
                 self.instance_url.get((ev["modulename"], ev.get("instance"))), due))
 
+    def _my_events(self, days_back: int = 30, days_ahead: int = 7) -> list[dict]:
+        """Seus itens AINDA NÃO CONCLUÍDOS (o Moodle tira da lista o que você já entregou)."""
+        if not hasattr(self, "_my_cache"):
+            data = self.m.call("core_calendar_get_action_events_by_timesort",
+                               timesortfrom=int((self.now - timedelta(days=days_back)).timestamp()),
+                               timesortto=int((self.now + timedelta(days=days_ahead)).timestamp()), limitnum=50)
+            # A lista do Moodle mistura TODAS as salas da conta (inclusive onde você é mediador) e inclui a
+            # "data esperada de conclusão" de materiais. Aqui ficam só prazos REAIS das salas em que você é aluno.
+            tracked = {int(k) for k in self.state.data.get("courses", {})}
+            self._my_cache = [e for e in data.get("events", [])
+                              if (e.get("course") or {}).get("id") in tracked
+                              and e.get("eventtype") in REAL_DEADLINES]
+        return self._my_cache
+
     def _my_deadlines(self) -> None:
-        """Seus itens ainda NÃO entregues que vencem em até 2 dias (só no seu chat)."""
-        data = self.m.call("core_calendar_get_action_events_by_timesort",
-                           timesortfrom=int(self.now.timestamp()),
-                           timesortto=int((self.now + timedelta(days=2)).timestamp()), limitnum=30)
-        for ev in data.get("events", []):
-            if not (ev.get("action") or {}).get("actionable", True):
-                continue
+        """Só no seu chat: lembretes do que VOCÊ ainda não entregou (3 dias, 1 dia, no dia, 6 horas antes)
+        e aviso único de prazo PERDIDO, dizendo se o Moodle ainda aceita envio atrasado."""
+        for ev in self._my_events():
             due = datetime.fromtimestamp(ev["timesort"], self.s.tz)
-            if self._seen(f"mine:{ev['id']}:{due:%Y%m%d}"):
+            course = short_course((ev.get("course") or {}).get("fullname", ""))
+            name = clean_event_name(ev.get("name"))
+            actionable = (ev.get("action") or {}).get("actionable", True)
+            if due < self.now:
+                if self._seen(f"late:{ev['id']}"):
+                    continue
+                body = (f"Venceu {fmt(due)}.\n" + ("O Moodle ainda aceita envio atrasado: envie o quanto antes."
+                                                    if actionable else
+                                                    "O envio está encerrado: fale com o professor ou o mediador."))
+                self.notices.append(Notice(f"late:{ev['id']}", "me", "⚠️", f"Prazo perdido: {name}", course, body,
+                                           ev.get("url"), due))
                 continue
-            self.notices.append(Notice(f"mine:{ev['id']}:{due:%Y%m%d}", "me", "🔴",
-                                       f"Você ainda não entregou: {ev['name']}",
-                                       short_course((ev.get("course") or {}).get("fullname", "")),
-                                       f"Vence {due:%d/%m %H:%M}", ev.get("url"), due))
+            if not actionable:
+                continue
+            hours = (due - self.now).total_seconds() / 3600
+            days = (due.date() - self.now.date()).days
+            stage = "6h" if hours <= 6 else next((f"{d}d" for d in sorted(self.s.reminder_days) if days <= d), None)
+            if stage is None or self._seen(f"mine:{ev['id']}:{stage}"):
+                continue
+            when = (f"em {max(int(hours), 1)} hora(s)" if stage == "6h" else
+                    "HOJE" if days == 0 else "amanhã" if days == 1 else f"em {days} dias")
+            self.notices.append(Notice(f"mine:{ev['id']}:{stage}", "me", "🔴", f"Você ainda não entregou ({when}): {name}",
+                                       course, f"Vence {fmt(due)}", ev.get("url"), due))
+
+    def _my_digest(self) -> None:
+        """Uma vez por dia, só no seu chat: tudo o que está atrasado e o que vence nos próximos 7 dias."""
+        key = f"mydigest:{self.now:%Y-%m-%d}"
+        if self.now.hour < self.s.digest_hour or key in self.state.data.setdefault("seen", {}):
+            return
+        self._seen(key)
+        late, soon = [], []
+        for ev in sorted(self._my_events(), key=lambda e: e["timesort"]):
+            due = datetime.fromtimestamp(ev["timesort"], self.s.tz)
+            course = short_course((ev.get("course") or {}).get("fullname", ""))
+            line = f"• {fmt(due)} — {course}: {clean_event_name(ev.get('name'))}"
+            if due < self.now:
+                if (ev.get("action") or {}).get("actionable", True):
+                    late.append(line + " (ainda aceita envio)")
+            else:
+                soon.append(line)
+        if not late and not soon:
+            body = "Nada pendente para os próximos 7 dias. 🎉"
+        else:
+            body = ""
+            if late:
+                body += "⚠️ Atrasadas (ainda dá para enviar):\n" + "\n".join(late) + "\n\n"
+            if soon:
+                body += "⏳ Vencem nos próximos 7 dias:\n" + "\n".join(soon)
+        self.notices.append(Notice(key, "me", "📋", f"Suas pendências ({self.now:%d/%m})", "", body.strip()))
 
     def _notifications(self) -> None:
         data = self.m.call("message_popup_get_popup_notifications", useridto=self.userid, newestfirst=1, limit=20,
@@ -255,8 +355,30 @@ class Collector:
         for ev in sorted(events.get("events", []), key=lambda e: e["timestart"]):
             if ev.get("eventtype") in ("due", "close") and ev.get("modulename") and ev.get("courseid") in group_ids:
                 due = datetime.fromtimestamp(ev["timestart"], self.s.tz)
-                name = re.sub(r" (está marcado|vence|é devido).*$", "", ev["name"])
-                items.append(f"• {due:%d/%m %a %H:%M} — {short_course(names.get(ev['courseid'], ''))}: {name}")
+                items.append(f"• {fmt(due)} — {short_course(names.get(ev['courseid'], ''))}: "
+                             f"{clean_event_name(ev['name'])}")
         self._seen(key)
         body = "\n".join(items) if items else "Nenhum prazo nos próximos 7 dias. 🎉"
         self.notices.append(Notice(key, "group", "🗓", f"Prazos da semana ({self.now:%d/%m})", "", body))
+
+    def _group_bursts(self, limit: int = 3) -> None:
+        """Mais de `limit` itens novos na mesma sala de uma vez -> uma mensagem só, com a lista e os links."""
+        by_course: dict[tuple[str, str], list[Notice]] = {}
+        for n in self.notices:
+            if n.extra.get("kind") == "mod":
+                by_course.setdefault((n.course, n.audience), []).append(n)
+        for (course, aud), items in by_course.items():
+            if len(items) <= limit:
+                continue
+            lines = []
+            for n in items[:25]:
+                link = f'<a href="{h(n.url)}">{h(n.extra["name"])}</a>' if n.url else h(n.extra["name"])
+                due = (f" — prazo {h(fmt(datetime.fromtimestamp(n.extra['due'], self.s.tz)))}"
+                       if n.extra.get("due") else "")
+                lines.append(f"• {h(n.extra['label'])}: {link}{due}")
+            if len(items) > 25:
+                lines.append(f"… e mais {len(items) - 25}")
+            merged = Notice("bulk:" + ",".join(n.key for n in items), aud, "📝",
+                            f"{len(items)} novos itens publicados", course, "\n".join(lines))
+            merged.extra = {"keys": [n.key for n in items]}
+            self.notices = [n for n in self.notices if n not in items] + [merged]

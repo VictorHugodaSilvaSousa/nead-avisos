@@ -212,7 +212,8 @@ def _run(s: Settings, dry_run: bool) -> int:
             sent += 1
         else:
             failed += 1
-            state.data.get("seen", {}).pop(n.key, None)    # não enviado: tenta de novo na próxima
+            for key in n.extra.get("keys", [n.key]):          # não enviado: tenta de novo na próxima
+                state.data.get("seen", {}).pop(key, None)
     if col.first_run and tg and s.telegram_chat_id:
         import os
         where = " na nuvem (funciona com o PC desligado)" if os.environ.get("GITHUB_ACTIONS") else ""

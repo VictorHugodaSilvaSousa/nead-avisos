@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import ssl
 import time
 import urllib.error
@@ -28,7 +29,8 @@ def render(n: Notice) -> str:
     if n.course:
         head += f"\n📚 {e(n.course)}"
     # body pode trazer <b>/<i> montados por nós; o resto do texto já vem escapado abaixo
-    body = n.body if ("<b>" in n.body or "<i>" in n.body) else e(n.body)
+    # Corpos montados com formatação já vêm escapados (collect.h); texto puro é escapado aqui.
+    body = n.body if re.search(r"</?(b|i|s|a)[ >]", n.body) else e(n.body)
     return (head + (f"\n\n{body}" if body else ""))[:LIMIT]
 
 
