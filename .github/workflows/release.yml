@@ -1,0 +1,40 @@
+# Gera o NEAD-Avisos.exe a partir do código deste repositório e anexa à versão (Release).
+# Assim o .exe que os colegas baixam é sempre construído do código público, em máquina limpa do GitHub.
+name: Gerar NEAD-Avisos.exe
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Versão (tag) para anexar o .exe, ex.: v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q . pyinstaller pytest
+      - run: python -m pytest -q
+        continue-on-error: false
+        shell: bash
+        env:
+          PYTHONPATH: src
+      - run: >
+          pyinstaller --noconfirm --onefile --console --name NEAD-Avisos --distpath dist --workpath build
+          --specpath build --collect-data tzdata --hidden-import keyring.backends.Windows --copy-metadata keyring
+          --collect-submodules truststore packaging/entrada.py
+      - name: Anexar à versão
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        shell: bash
+        run: gh release upload "$TAG" dist/NEAD-Avisos.exe --clobber
