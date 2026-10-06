@@ -3,14 +3,22 @@
 Avisos do Moodle do NEAD/IFB no **Telegram**, que chegam no celular e no PC ao mesmo tempo:
 
 - 📝 nova atividade ou material publicado pelo professor, com o link direto;
-- 📢 novo post no fórum de **Avisos** das disciplinas e da Sala da Coordenação;
-- ⏰ lembretes de prazo: 3 dias antes, 1 dia antes e no dia;
-- 🗓 resumo diário com os prazos da semana;
-- 🔴 o que **você** ainda não entregou e vence em até 2 dias (só no seu chat);
+- ✏️ **atividade alterada pelo professor**, dizendo o que mudou: nome, enunciado, arquivo novo, atualizado ou
+  removido, e disponibilidade;
+- 📅 prazo alterado (antes → depois) e ⚙️ configuração alterada (forma de envio, nota, tentativas...);
+- 📢 novo aviso no fórum de **Avisos** e aviso editado pelo professor;
+- 💬 tópico novo e **resposta do professor** em qualquer fórum. Postagens de colegas vão só para o seu chat;
+- 📆 novo evento da sala (aula síncrona, encontro...), evento alterado e lembrete no dia;
+- ⏰ lembretes de prazo: 3 dias antes, 1 dia antes e no dia; 🗓 resumo diário com os prazos da semana;
+- 📊 **nota lançada ou alterada** e 💬 comentário do professor (só no seu chat);
+- 🔴 o que **você** ainda não entregou, ⚠️ prazo perdido e 📋 resumo diário das suas pendências (só no seu chat);
 - 🔔 notificações e ✉️ mensagens do Moodle (só no seu chat).
 
-**Grupo da turma (opcional):** recebe só o que é igual para todos (atividades, avisos, prazos). Nunca recebe
-notificações, mensagens ou entregas pessoais.
+**Grupo da turma (opcional):** recebe só o que é igual para todos (atividades e alterações, avisos, respostas
+do professor, eventos e prazos). Nunca recebe notas, notificações, mensagens ou entregas pessoais.
+
+Quando uma versão nova traz tipos de aviso novos, a primeira execução só registra o estado atual. Assim não
+chega uma enxurrada de "novidades" antigas.
 
 **Segurança:**
 - **Somente leitura:** o programa só consulta o Moodle e nunca envia, marca ou altera nada lá.
@@ -73,8 +81,19 @@ O log fica em `data\avisos.log`. Para remover a tarefa: `scripts\uninstall-windo
      rode `nead-avisos show-token` no PC.
    - **Variables:** `NEAD_AVISOS_TELEGRAM_CHAT_ID` e, se quiser, `NEAD_AVISOS_TELEGRAM_GROUP_ID`.
 3. Na aba **Actions**, habilite os workflows e clique em **NEAD Avisos → Run workflow** para testar.
-   - A partir daí, ele roda a cada ~20 minutos, sozinho.
-4. **Desative a tarefa do PC** (passo 3a). Com as duas ligadas, os avisos chegam em dobro.
+4. **A cada 15 minutos de verdade:** o agendamento grátis do GitHub atrasa muito e, na prática, roda só a cada
+   3 a 7 horas. Para os avisos chegarem na hora, use o https://cron-job.org (grátis) para disparar o workflow:
+   - crie um token em https://github.com/settings/personal-access-tokens/new com *Only select repositories*
+     (este repositório) e **Actions: Read and write**, nada mais;
+   - no cron-job.org, crie um cronjob *Every 15 minutes* com
+     - URL `https://api.github.com/repos/SEU_USUARIO/SEU_REPOSITORIO/actions/workflows/avisos.yml/dispatches`;
+     - método `POST`;
+     - cabeçalhos `Authorization: Bearer SEU_TOKEN`, `Accept: application/vnd.github+json`,
+       `X-GitHub-Api-Version: 2022-11-28` e `Content-Type: application/json`;
+     - corpo `{"ref":"main"}`.
+
+     O "Test run" deve responder **204**.
+5. **Desative a tarefa do PC** (passo 3a). Com as duas ligadas, os avisos chegam em dobro.
 
 ## Configurações (`.env` ou Variables do GitHub)
 

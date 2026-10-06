@@ -22,6 +22,7 @@ class FakeMoodle(Moodle):
         self.events = []
         self.notifs = []
         self.convs = []
+        self.updates, self.replies, self.grades = {}, {}, {}
 
     def call(self, function, **params):
         assert function in READ_ONLY_FUNCTIONS
@@ -49,6 +50,12 @@ class FakeMoodle(Moodle):
             return {"notifications": self.notifs}
         if function == "core_message_get_conversations":
             return {"conversations": self.convs}
+        if function == "core_course_get_updates_since":
+            return {"instances": self.updates.get(params["courseid"], [])}
+        if function == "mod_forum_get_discussion_posts":
+            return {"posts": self.replies.get(params["discussionid"], [])}
+        if function == "gradereport_user_get_grade_items":
+            return {"usergrades": [{"gradeitems": self.grades.get(params["courseid"], [])}]}
         raise AssertionError(function)
 
 

@@ -9,8 +9,10 @@ name: NEAD Avisos
 
 on:
   schedule:
-    - cron: "*/20 * * * *"        # a cada ~20 min (o GitHub pode atrasar alguns minutos)
-  workflow_dispatch: {}           # botão "Run workflow" para testar
+    # Reserva: na prática o GitHub roda isto só a cada 3–7 h. O disparo principal (a cada 15 min) vem do
+    # cron-job.org chamando workflow_dispatch com um token que só pode disparar este workflow.
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}           # cron-job.org (a cada 15 min) e botão "Run workflow"
 
 permissions:
   contents: read
@@ -58,3 +60,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/avisos.yml/enable" || true
+      - name: Apagar estados antigos
+        # Cada execução guarda um estado novo; só os 3 mais recentes interessam (96 execuções/dia).
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/caches?key=nead-avisos-state-&sort=created_at&direction=desc&per_page=100" \
+            --jq '.actions_caches[3:][].id' | while read -r id; do
+              gh api -X DELETE "repos/${{ github.repository }}/actions/caches/$id" >/dev/null || true
+            done

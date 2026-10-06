@@ -1,9 +1,11 @@
 """Descobre o que há de novo no Moodle para o aluno e transforma em avisos.
 
 Tipos de aviso (audience: 'me' = só o seu chat; 'group' = também o grupo da turma):
-  nova atividade/material (group) · aviso no fórum de Avisos (group) · lembrete de prazo (group, pelo
-  calendário da sala) · seu prazo ainda não entregue (me) · notificação do Moodle (me) · mensagem (me) ·
-  resumo diário de prazos (me + group)
+  nova atividade/material (group) · atividade ALTERADA pelo professor: nome, prazo, enunciado, arquivos,
+  disponibilidade ou configuração (group) · aviso no fórum de Avisos, aviso editado (group) · tópico novo e
+  resposta de professor em qualquer fórum (group; de colegas: me) · novo evento/aula e evento alterado (group) ·
+  lembrete de prazo (group) · nota lançada/alterada e comentário do professor (me) · seu prazo ainda não
+  entregue e prazo perdido (me) · notificação do Moodle (me) · mensagem (me) · resumos diários (me + group)
 
 Primeira execução: só registra o estado atual (não envia uma enxurrada de "novidades" antigas).
 """
@@ -11,6 +13,7 @@ Primeira execução: só registra o estado atual (não envia uma enxurrada de "n
 from __future__ import annotations
 
 import html
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -94,6 +97,9 @@ class Collector:
         self.notices: list[Notice] = []
         self.first_run = not state.data.get("initialized")
         self.instance_url: dict[tuple[str, int], str] = {}   # (tipo, instância) -> link, para o calendário
+        self.mods: dict[int, dict] = {}        # cmid -> {name, url, new} (para avisos de configuração)
+        self.mod_url: dict[int, str] = {}      # cmid -> link (para notas)
+        self.edited: set[int] = set()          # cmids com aviso de alteração nesta execução
 
     # ------------------------------------------------------------------ salas acompanhadas
     def courses(self) -> list[dict]:
@@ -139,10 +145,14 @@ class Collector:
         courses = self.courses()
         self.state.data["courses"] = {str(c["id"]): c["fullname"] for c in courses}
         group_ids = self.group_course_ids(courses)
+        self.silent_edits = self._feature_silent("edits")
         for c in courses:
             aud = "group" if c["id"] in group_ids else "me"
             self._new_modules(c, aud)
-        self._forum_news(courses, group_ids)
+        self._config_updates(courses, group_ids)
+        self._forums(courses, group_ids)
+        self._grades(courses)
+        self._events(courses, group_ids)
         self._course_deadlines(courses, group_ids)
         self._my_deadlines()
         self._notifications()
@@ -168,7 +178,6 @@ class Collector:
 
     def _new_modules(self, c: dict, aud: str) -> None:
         sections = self.m.call("core_course_get_contents", courseid=c["id"])
-        dues = self.state.data.setdefault("dues", {})
         for sec in sections:
             for mod in sec.get("modules", []):
                 if mod.get("instance") and mod.get("url"):
@@ -180,16 +189,10 @@ class Collector:
                 key = f"mod:{mod['id']}"
                 label = ACTIVITY_LABEL.get(mod.get("modname"), mod.get("modname", "Item"))
                 course = short_course(c["fullname"])
-                # Prazo alterado pelo professor (só para itens já conhecidos)
-                old_due = dues.get(str(mod["id"]))
-                if due:
-                    dues[str(mod["id"])] = due
-                if old_due and due and old_due != due and not self.first_run:
-                    before = datetime.fromtimestamp(old_due, self.s.tz)
-                    after = datetime.fromtimestamp(due, self.s.tz)
-                    self.notices.append(Notice(
-                        f"duechange:{mod['id']}:{due}", aud, "📅", f"Prazo alterado: {mod['name']}", course,
-                        f"<s>{h(fmt(before))}</s> → <b>{h(fmt(after))}</b>", mod.get("url"), after))
+                self.mod_url[mod["id"]] = mod.get("url")
+                self.mods[mod["id"]] = {"name": mod.get("name"), "url": mod.get("url"),
+                                        "new": key not in self.state.data.setdefault("seen", {})}
+                self._activity_edits(mod, c, aud, self.silent_edits)
                 if self._seen(key):
                     continue
                 lines = [f"{h(label)} · seção <b>{h(sec.get('name') or 'curso')}</b>"]
@@ -204,24 +207,6 @@ class Collector:
                                            course, "\n".join(lines), mod.get("url"),
                                            extra={"kind": "mod", "course": course, "name": mod["name"],
                                                   "label": label, "due": due}))
-
-    def _forum_news(self, courses: list[dict], group_ids: set[int]) -> None:
-        forums = self.m.call("mod_forum_get_forums_by_courses", courseids=[c["id"] for c in courses])
-        names = {c["id"]: c["fullname"] for c in courses}
-        for f in forums:
-            if f.get("type") != "news" and "aviso" not in (f.get("name") or "").lower():
-                continue
-            data = self.m.call("mod_forum_get_forum_discussions", forumid=f["id"], sortorder=1, page=0, perpage=10)
-            for d in data.get("discussions", []):
-                if self._seen(f"post:{d['discussion']}"):
-                    continue
-                aud = "group" if f["course"] in group_ids else "me"
-                created = datetime.fromtimestamp(d.get("created") or d.get("timemodified", 0), self.s.tz)
-                self.notices.append(Notice(
-                    f"post:{d['discussion']}", aud, "📢", d.get("name") or d.get("subject") or "Aviso",
-                    short_course(names.get(f["course"], "")),
-                    f"<i>{h(d.get('userfullname', ''))}</i> · {h(fmt(created))}\n{h(plain(d.get('message')))}",
-                    self.m.url(f"mod/forum/discuss.php?d={d['discussion']}"), created))
 
     def _course_deadlines(self, courses: list[dict], group_ids: set[int]) -> None:
         """Lembretes de prazo iguais para toda a turma (calendário da sala)."""
@@ -382,3 +367,270 @@ class Collector:
                             f"{len(items)} novos itens publicados", course, "\n".join(lines))
             merged.extra = {"keys": [n.key for n in items]}
             self.notices = [n for n in self.notices if n not in items] + [merged]
+
+    # ------------------------------------------------------------------ v3: tudo o que o professor faz
+    def _feature_silent(self, feature: str) -> bool:
+        """Tipo de aviso novo numa instalação que já existia: a 1ª vez só registra o estado atual (sem
+        enxurrada de "novidades" antigas). Na 1ª execução da instalação tudo já é silencioso."""
+        feats = self.state.data.setdefault("features", [])
+        if feature in feats:
+            return self.first_run
+        feats.append(feature)
+        return True
+
+    def _is_staff(self, course_id: int, user_id: int | None) -> bool:
+        """Professor/mediação = qualquer papel na sala que não seja só 'student' (cache no estado)."""
+        if not user_id:
+            return False
+        cache = self.state.data.setdefault("people", {})
+        key = f"{course_id}:{user_id}"
+        if key not in cache:
+            try:
+                prof = self.m.call("core_user_get_course_user_profiles",
+                                   userlist=[{"userid": user_id, "courseid": course_id}])
+                cache[key] = sorted(r["shortname"] for r in (prof[0].get("roles", []) if prof else []))
+            except Exception:  # noqa: BLE001 — sem papel conhecido: trata como colega
+                cache[key] = []
+        roles = set(cache[key])
+        return bool(roles) and roles != {"student"}
+
+    @staticmethod
+    def _fingerprint(mod: dict) -> dict:
+        return {"name": mod.get("name") or "",
+                "desc": plain(mod.get("description"), 2000),
+                "dates": {d.get("dataid"): d.get("timestamp") for d in mod.get("dates", []) if d.get("timestamp")},
+                "files": {f.get("filename"): f.get("timemodified") for f in mod.get("contents") or []
+                          if f.get("type") == "file" and f.get("filename")},
+                "avail": plain(mod.get("availabilityinfo"), 400)}
+
+    def _changes(self, old: dict, new: dict) -> tuple[list[str], bool]:
+        """Linhas legíveis do que mudou; e se a mudança foi SÓ de datas."""
+        lines: list[str] = []
+        if old.get("name") != new["name"]:
+            lines.append(f"Nome: <s>{h(old.get('name'))}</s> → <b>{h(new['name'])}</b>")
+        for dataid in sorted(set(old.get("dates", {})) | set(new["dates"])):
+            label = DATE_LABEL.get(dataid, None if dataid in DATE_LABEL else dataid)
+            a, b = old.get("dates", {}).get(dataid), new["dates"].get(dataid)
+            if label is None or a == b:
+                continue
+            fa = h(fmt(datetime.fromtimestamp(a, self.s.tz))) if a else "sem data"
+            fb = h(fmt(datetime.fromtimestamp(b, self.s.tz))) if b else "removido"
+            lines.append(f"{label}: <s>{fa}</s> → <b>{fb}</b>")
+        only_dates = bool(lines) and all(not x.startswith("Nome:") for x in lines)
+        if old.get("desc", "") != new["desc"]:
+            snippet = new["desc"] if len(new["desc"]) <= 350 else new["desc"][:350].rsplit(" ", 1)[0] + "…"
+            lines.append("Enunciado/descrição atualizado" + (f":\n<i>{h(snippet)}</i>" if snippet else " (removido)"))
+            only_dates = False
+        old_files = old.get("files", {})
+        for name, tm in new["files"].items():
+            if name not in old_files:
+                lines.append(f"📎 Arquivo novo: {h(name)}")
+            elif old_files[name] != tm:
+                lines.append(f"📎 Arquivo atualizado: {h(name)}")
+        for name in old_files:
+            if name not in new["files"]:
+                lines.append(f"📎 Arquivo removido: {h(name)}")
+        if old.get("avail", "") != new["avail"] and new["avail"]:
+            lines.append(f"Disponibilidade: {h(new['avail'])}")
+        if any(x.startswith(("📎", "Disponibilidade")) for x in lines):
+            only_dates = False
+        return lines, only_dates
+
+    def _activity_edits(self, mod: dict, c: dict, aud: str, silent: bool) -> None:
+        """Professor alterou a atividade: nome, datas, enunciado, arquivos ou disponibilidade."""
+        prints = self.state.data.setdefault("fp", {})
+        key = str(mod["id"])
+        new, old = self._fingerprint(mod), prints.get(key)
+        prints[key] = new
+        if old is None or silent:
+            return
+        lines, only_dates = self._changes(old, new)
+        if not lines:
+            return
+        import hashlib
+        digest = hashlib.sha1(json.dumps(new, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:10]
+        prefix, icon, title = (("duechange", "📅", "Prazo alterado") if only_dates
+                               else ("edit", "✏️", "Atividade alterada pelo professor"))
+        if self._seen(f"{prefix}:{mod['id']}:{digest}"):
+            return
+        self.edited.add(mod["id"])
+        due = next((new["dates"][k] for k in DUE_KEYS if new["dates"].get(k)), None)
+        self.notices.append(Notice(f"{prefix}:{mod['id']}:{digest}", aud, icon, f"{title}: {new['name']}",
+                                   short_course(c["fullname"]), "\n".join(lines), mod.get("url"),
+                                   datetime.fromtimestamp(due, self.s.tz) if only_dates and due else None))
+
+    def _config_updates(self, courses: list[dict], group_ids: set[int]) -> None:
+        """Mudanças de configuração que não aparecem no conteúdo (ex.: regras de envio, nota, tentativas),
+        informadas pelo próprio Moodle (core_course_get_updates_since)."""
+        silent = self._feature_silent("config")
+        marks = self.state.data.setdefault("updates_since", {})
+        start = int(self.now.timestamp())
+        for c in courses:
+            since = marks.get(str(c["id"]))
+            marks[str(c["id"])] = start
+            if silent or not since:
+                continue
+            try:
+                data = self.m.call("core_course_get_updates_since", courseid=c["id"], since=since)
+            except Exception:  # noqa: BLE001 — recurso opcional: o resto dos avisos continua
+                continue
+            aud = "group" if c["id"] in group_ids else "me"
+            for inst in data.get("instances", []):
+                if inst.get("contextlevel") != "module" or inst.get("id") in self.edited:
+                    continue
+                cfg = [u for u in inst.get("updates", []) if u.get("name") == "configuration"]
+                info = self.mods.get(inst.get("id"))
+                if not cfg or not info or info["new"]:
+                    continue
+                stamp = max(u.get("timeupdated") or since for u in cfg)
+                if self._seen(f"cfg:{inst['id']}:{stamp}"):
+                    continue
+                self.notices.append(Notice(
+                    f"cfg:{inst['id']}:{stamp}", aud, "⚙️", f"Configuração alterada: {info['name']}",
+                    short_course(c["fullname"]),
+                    "O professor mudou as configurações desta atividade (ex.: forma de envio, nota, tentativas "
+                    "ou critérios). Vale abrir e conferir.", info["url"]))
+
+    def _forums(self, courses: list[dict], group_ids: set[int]) -> None:
+        """Todos os fóruns: tópicos novos, respostas e avisos editados. Professor/mediação vai para o grupo
+        da turma; postagens de colegas só para o seu chat."""
+        silent = self._feature_silent("forums")
+        forums = self.m.call("mod_forum_get_forums_by_courses", courseids=[c["id"] for c in courses])
+        names = {c["id"]: c["fullname"] for c in courses}
+        known = self.state.data.setdefault("disc", {})
+        for f in forums:
+            news = f.get("type") == "news" or "aviso" in (f.get("name") or "").lower()
+            data = self.m.call("mod_forum_get_forum_discussions", forumid=f["id"], sortorder=1, page=0, perpage=10)
+            course = short_course(names.get(f["course"], ""))
+            for d in data.get("discussions", []):
+                did = str(d["discussion"])
+                old = known.get(did)
+                known[did] = {"n": d.get("numreplies", 0), "tm": d.get("timemodified", 0)}
+                url = self.m.url(f"mod/forum/discuss.php?d={d['discussion']}")
+                staff = self._is_staff(f["course"], d.get("userid"))
+                in_group = f["course"] in group_ids
+                if old is None:
+                    # tópico novo (os do fórum de Avisos continuam com a chave antiga 'post:')
+                    key = f"post:{did}" if news else f"topic:{did}"
+                    if self._seen(key) or silent:
+                        continue
+                    created = datetime.fromtimestamp(d.get("created") or d.get("timemodified", 0), self.s.tz)
+                    aud = "group" if in_group and (news or staff) else "me"
+                    title = (d.get("name") or d.get("subject") or "Aviso") if news else \
+                        f"Novo tópico em {f.get('name')}: {d.get('name') or d.get('subject')}"
+                    who = h(d.get("userfullname", "")) + (" (professor/mediação)" if staff and not news else "")
+                    self.notices.append(Notice(key, aud, "📢" if news else "💬", title, course,
+                                               f"<i>{who}</i> · {h(fmt(created))}\n{h(plain(d.get('message')))}",
+                                               url, created))
+                    continue
+                if silent or d.get("timemodified", 0) <= old.get("tm", 0):
+                    continue
+                if d.get("numreplies", 0) > old.get("n", 0):
+                    self._new_replies(d, f, course, in_group, news, old, url)
+                elif news or staff:
+                    key = f"postedit:{did}:{d.get('timemodified')}"
+                    if self._seen(key):
+                        continue
+                    self.notices.append(Notice(
+                        key, "group" if in_group else "me", "✏️", f"Aviso editado: {d.get('name')}", course,
+                        f"<i>{h(d.get('usermodifiedfullname') or d.get('userfullname', ''))}</i> atualizou o texto:\n"
+                        f"{h(plain(d.get('message')))}", url))
+
+    def _new_replies(self, d: dict, f: dict, course: str, in_group: bool, news: bool, old: dict, url: str) -> None:
+        try:
+            data = self.m.call("mod_forum_get_discussion_posts", discussionid=d["discussion"], sortby="created",
+                               sortdirection="DESC")
+        except Exception:  # noqa: BLE001
+            return
+        fresh = [p for p in data.get("posts", []) if (p.get("timecreated") or 0) > old.get("tm", 0)
+                 and p.get("parentid")]
+        if not fresh:
+            return
+        key = f"reply:{d['discussion']}:{max(p['id'] for p in fresh)}"
+        if self._seen(key):
+            return
+        by_staff = [p for p in fresh if self._is_staff(f["course"], (p.get("author") or {}).get("id"))]
+        last = (by_staff or fresh)[0]
+        author = (last.get("author") or {}).get("fullname", "")
+        when = datetime.fromtimestamp(last.get("timecreated", 0), self.s.tz)
+        body = (f"<i>{h(author)}{' (professor/mediação)' if by_staff else ''}</i> · {h(fmt(when))}\n"
+                f"{h(plain(last.get('message'), 500))}")
+        if len(fresh) > 1:
+            body += f"\n\n+{len(fresh) - 1} outra(s) resposta(s) nesta discussão."
+        aud = "group" if in_group and by_staff else "me"
+        title = (f"Professor respondeu em: {d.get('name')}" if by_staff else f"Nova resposta em: {d.get('name')}")
+        self.notices.append(Notice(key, aud, "💬", title, course, body, url, when))
+
+    def _grades(self, courses: list[dict]) -> None:
+        """Só no seu chat: nota lançada ou alterada e comentário (feedback) do professor."""
+        silent = self._feature_silent("grades")
+        known = self.state.data.setdefault("grades", {})
+        for c in courses:
+            try:
+                data = self.m.call("gradereport_user_get_grade_items", courseid=c["id"], userid=self.userid)
+            except Exception:  # noqa: BLE001
+                continue
+            for item in (data.get("usergrades") or [{}])[0].get("gradeitems", []):
+                if item.get("itemtype") != "mod":
+                    continue
+                key = f"{c['id']}:{item['id']}"
+                grade = plain(item.get("gradeformatted"), 40).strip()
+                grade = "" if grade in ("-", "") else grade
+                feedback = plain(item.get("feedback"), 600)
+                old = known.get(key)
+                known[key] = {"g": grade, "f": feedback}
+                if silent or old is None and not grade and not feedback:
+                    continue
+                old = old or {"g": "", "f": ""}
+                name = plain(item.get("itemname"), 150) or "Atividade"
+                rng = plain(item.get("rangeformatted"), 20)
+                url = self.mod_url.get(item.get("cmid"))
+                course = short_course(c["fullname"])
+                fb = f"\n💬 Comentário do professor:\n<i>{h(feedback)}</i>" if feedback and feedback != old["f"] else ""
+                if grade and grade != old["g"]:
+                    title = f"Nota lançada: {name}" if not old["g"] else f"Nota alterada: {name}"
+                    text = (f"<b>{h(grade)}</b>" + (f" (escala {h(rng)})" if rng else "")
+                            if not old["g"] else f"<s>{h(old['g'])}</s> → <b>{h(grade)}</b>")
+                    self.notices.append(Notice(f"grade:{key}:{grade}:{len(feedback)}", "me", "📊", title, course,
+                                               text + fb, url))
+                elif fb:
+                    self.notices.append(Notice(f"feedback:{key}:{len(feedback)}", "me", "💬",
+                                               f"Comentário do professor: {name}", course, fb.strip(), url))
+
+    def _events(self, courses: list[dict], group_ids: set[int]) -> None:
+        """Eventos da sala que não são prazo de atividade (aula síncrona, encontro, prova presencial...):
+        novo evento, evento alterado e lembrete no dia."""
+        silent = self._feature_silent("events")
+        data = self.m.call("core_calendar_get_calendar_events", events={"courseids": [c["id"] for c in courses]},
+                           options={"timestart": int((self.now - timedelta(hours=12)).timestamp()),
+                                    "timeend": int((self.now + timedelta(days=60)).timestamp())})
+        names = {c["id"]: c["fullname"] for c in courses}
+        known = self.state.data.setdefault("events", {})
+        for ev in data.get("events", []):
+            if ev.get("modulename") or ev.get("eventtype") not in ("course", "group", "site", "category"):
+                continue
+            eid = str(ev["id"])
+            stamp = [ev.get("timestart"), ev.get("timeduration"), ev.get("name"), plain(ev.get("description"), 300)]
+            old = known.get(eid)
+            known[eid] = stamp
+            start = datetime.fromtimestamp(ev["timestart"], self.s.tz)
+            aud = "group" if ev.get("courseid") in group_ids else "me"
+            course = short_course(names.get(ev.get("courseid"), ""))
+            desc = plain(ev.get("description"), 300)
+            body = f"<b>{h(fmt(start))}</b>" + (f"\n<i>{h(desc)}</i>" if desc else "")
+            url = self.m.url(f"calendar/view.php?view=day&time={ev['timestart']}")
+            if silent:
+                continue
+            if old is None and start >= self.now:
+                if not self._seen(f"event:{eid}"):
+                    self.notices.append(Notice(f"event:{eid}", aud, "📆", f"Novo evento: {ev['name']}", course, body,
+                                               url, start))
+            elif old is not None and old != stamp and start >= self.now:
+                import hashlib
+                key = f"eventchange:{eid}:" + hashlib.sha1(json.dumps(stamp, ensure_ascii=False).encode()).hexdigest()[:8]
+                if not self._seen(key):
+                    self.notices.append(Notice(key, aud, "📆", f"Evento alterado: {ev['name']}", course, body,
+                                               url, start))
+            if start.date() == self.now.date() and start >= self.now and not self._seen(f"eventday:{eid}"):
+                self.notices.append(Notice(f"eventday:{eid}", aud, "⏰", f"Hoje às {start:%H:%M}: {ev['name']}",
+                                           course, body, url, start))
