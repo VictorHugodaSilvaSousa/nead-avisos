@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .collect import Collector, short_course
 from .config import Settings, get_secret, set_secret
@@ -204,16 +204,36 @@ def _run(s: Settings, dry_run: bool) -> int:
         print("Telegram não configurado: os avisos NÃO foram marcados como enviados.", file=sys.stderr)
         return 2
     tg = Telegram(tg_token) if tg_token else None
+    # Grupo que virou supergrupo numa execução anterior: usa o id novo guardado no estado.
+    group_id = state.data.get("group_migrated", {}).get(str(s.telegram_group_id), s.telegram_group_id)
+    partial = state.data.setdefault("partial", {})      # aviso -> chats que JÁ receberam (nunca repete)
     for n in sorted(notices, key=lambda n: (n.when or now)):
-        ok = tg.send(s.telegram_chat_id, n)
-        if ok and n.audience == "group" and s.telegram_group_id:
-            ok = tg.send(s.telegram_group_id, n)
-        if ok:
+        dests = [s.telegram_chat_id] + ([group_id] if n.audience == "group" and group_id else [])
+        info = partial.get(n.key, {"done": [], "since": now.isoformat()})
+        for chat in dests:
+            if chat not in info["done"] and tg.send(chat, n):
+                info["done"].append(chat)
+        if all(chat in info["done"] for chat in dests):
             sent += 1
-        else:
-            failed += 1
-            for key in n.extra.get("keys", [n.key]):          # não enviado: tenta de novo na próxima
-                state.data.get("seen", {}).pop(key, None)
+            partial.pop(n.key, None)
+            continue
+        failed += 1
+        if datetime.fromisoformat(info["since"]) < now - timedelta(days=1):
+            print(f"Desistindo de '{n.title[:40]}' após 1 dia de falhas.", file=sys.stderr)
+            partial.pop(n.key, None)                       # fica marcado como visto: não tenta mais
+            continue
+        partial[n.key] = info
+        for key in n.extra.get("keys", [n.key]):          # tenta de novo na próxima, só onde faltou
+            state.data.get("seen", {}).pop(key, None)
+    if tg and tg.migrated:
+        moves = state.data.setdefault("group_migrated", {})
+        for old, new in tg.migrated.items():
+            moves[str(old)] = new
+            if s.telegram_group_id is not None:
+                moves[str(s.telegram_group_id)] = new
+        tg.send_text(s.telegram_chat_id, "ℹ️ <b>NEAD Avisos</b>: o grupo da turma virou supergrupo no Telegram e "
+                                         f"ganhou um número novo ({new}). Já estou usando o número novo. Para "
+                                         "deixar registrado, atualize NEAD_AVISOS_TELEGRAM_GROUP_ID para esse número.")
     if col.first_run and tg and s.telegram_chat_id:
         import os
         where = " na nuvem (funciona com o PC desligado)" if os.environ.get("GITHUB_ACTIONS") else ""

@@ -37,6 +37,7 @@ def render(n: Notice) -> str:
 class Telegram:
     def __init__(self, token: str) -> None:
         self.token = token
+        self.migrated: dict[int, int] = {}     # grupo que virou supergrupo: id antigo -> id novo
 
     def _api(self, method: str, payload: dict) -> dict:
         req = urllib.request.Request(f"https://api.telegram.org/bot{self.token}/{method}",
@@ -65,6 +66,12 @@ class Telegram:
         if notice.url:
             payload["reply_markup"] = {"inline_keyboard": [[{"text": "Abrir no Moodle", "url": notice.url}]]}
         result = self._api("sendMessage", payload)
+        new_id = (result.get("parameters") or {}).get("migrate_to_chat_id")
+        if not result.get("ok") and new_id:
+            # O Telegram transformou o grupo em supergrupo (novo id): reenvia lá e guarda o id novo.
+            self.migrated[chat_id] = new_id
+            payload["chat_id"] = new_id
+            result = self._api("sendMessage", payload)
         ok = bool(result.get("ok"))
         if not ok:
             import sys
