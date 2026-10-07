@@ -5,7 +5,8 @@ Tipos de aviso (audience: 'me' = só o seu chat; 'group' = também o grupo da tu
   disponibilidade ou configuração (group) · aviso no fórum de Avisos, aviso editado (group) · tópico novo e
   resposta de professor em qualquer fórum (group; de colegas: me) · novo evento/aula e evento alterado (group) ·
   lembrete de prazo (group) · nota lançada/alterada e comentário do professor (me) · seu prazo ainda não
-  entregue e prazo perdido (me) · notificação do Moodle (me) · mensagem (me) · resumos diários (me + group)
+  entregue e prazo perdido (me) · notificação do Moodle sem repetir assunto (me) · TODA mensagem recebida
+  (me) · verificação diária do que chegou (me) · resumos diários (me + group)
 
 Primeira execução: só registra o estado atual (não envia uma enxurrada de "novidades" antigas).
 """
@@ -100,6 +101,7 @@ class Collector:
         self.mods: dict[int, dict] = {}        # cmid -> {name, url, new} (para avisos de configuração)
         self.mod_url: dict[int, str] = {}      # cmid -> link (para notas)
         self.edited: set[int] = set()          # cmids com aviso de alteração nesta execução
+        self.covered: dict[str, str] = {}      # notificação do Moodle não reenviada -> por quê (verificação)
 
     # ------------------------------------------------------------------ salas acompanhadas
     def courses(self) -> list[dict]:
@@ -159,6 +161,7 @@ class Collector:
         self._messages()
         self._daily_digest(courses, group_ids)
         self._my_digest()
+        self._daily_check()
         self._group_bursts()
         if self.first_run:
             self.state.data["initialized"] = self.now.isoformat()
@@ -300,31 +303,137 @@ class Collector:
                 body += "⏳ Vencem nos próximos 7 dias:\n" + "\n".join(soon)
         self.notices.append(Notice(key, "me", "📋", f"Suas pendências ({self.now:%d/%m})", "", body.strip()))
 
+    # ------------------------------------------------------------------ caixa de entrada (notificações e mensagens)
+    REMINDER_TYPES = {"assign_due_soon", "assign_due_digest", "assign_overdue", "quiz_open_soon", "quiz_due_soon"}
+
+    @staticmethod
+    def _ref(url: str | None) -> str | None:
+        """Assunto de um link do Moodle: discussão do fórum ('d:123') ou atividade ('cm:456')."""
+        if not url:
+            return None
+        m = re.search(r"discuss\.php\?d=(\d+)", url)
+        if m:
+            return f"d:{m.group(1)}"
+        m = re.search(r"/mod/\w+/view\.php\?id=(\d+)", url)
+        return f"cm:{m.group(1)}" if m else None
+
+    def _remember_refs(self) -> None:
+        refs = self.state.data.setdefault("refs", {})
+        for n in self.notices:
+            if (ref := self._ref(n.url)) is not None:
+                refs[ref] = self.now.isoformat(timespec="seconds")
+        limit = (self.now - timedelta(days=30)).isoformat()
+        self.state.data["refs"] = {k: v for k, v in refs.items() if v >= limit}
+
     def _notifications(self) -> None:
-        data = self.m.call("message_popup_get_popup_notifications", useridto=self.userid, newestfirst=1, limit=20,
+        """Tudo o que o Moodle notifica para você. Lembretes de prazo do Moodle e notificações de um assunto que
+        já foi avisado (mesma discussão/atividade) não se repetem; o resto chega aqui."""
+        self._remember_refs()
+        refs = self.state.data.get("refs", {})
+        data = self.m.call("message_popup_get_popup_notifications", useridto=self.userid, newestfirst=1, limit=50,
                            offset=0)
-        for n in data.get("notifications", []):
-            if self._seen(f"notif:{n['id']}"):
+        self.inbox_notifs = data.get("notifications", [])
+        for n in self.inbox_notifs:
+            key = f"notif:{n['id']}"
+            if self._seen(key):
                 continue
-            self.notices.append(Notice(f"notif:{n['id']}", "me", "🔔", plain(n.get("subject"), 150), "",
+            if n.get("eventtype") in self.REMINDER_TYPES:
+                self.covered[key] = "lembrete de prazo do NEAD Avisos"
+                continue
+            if (ref := self._ref(n.get("contexturl"))) and ref in refs:
+                self.covered[key] = "mesmo assunto já avisado"
+                continue
+            self.notices.append(Notice(key, "me", "🔔", plain(n.get("subject"), 150), "",
                                        plain(n.get("smallmessage") or n.get("fullmessage"), 400),
                                        n.get("contexturl"),
                                        datetime.fromtimestamp(n.get("timecreated", 0), self.s.tz)))
 
     def _messages(self) -> None:
-        data = self.m.call("core_message_get_conversations", userid=self.userid, limitfrom=0, limitnum=20)
+        """Toda mensagem recebida, de qualquer conversa (individual ou em grupo), uma por uma.
+        (O Moodle do NEAD não informa 'não lidas', então a referência é a data da última mensagem já vista.)"""
+        silent = self._feature_silent("messages")
+        marks = self.state.data.setdefault("conv", {})
+        data = self.m.call("core_message_get_conversations", userid=self.userid, limitfrom=0, limitnum=50)
+        backlog: list[tuple[float, str, str]] = []
+        self.inbox_msgs = []
         for conv in data.get("conversations", []):
-            msgs = conv.get("messages") or []
-            if not conv.get("unreadcount") or not msgs:
+            last = (conv.get("messages") or [{}])[0]
+            cid = str(conv["id"])
+            last_ts = last.get("timecreated") or 0
+            seen_ts = marks.get(cid)
+            if seen_ts is not None and last_ts <= seen_ts:
                 continue
-            last = msgs[0]
-            if last.get("useridfrom") == self.userid or self._seen(f"msg:{last['id']}"):
+            marks[cid] = last_ts
+            window = (self.now - timedelta(days=7)).timestamp() if (silent or seen_ts is None) else seen_ts
+            if last_ts <= window:
                 continue
-            who = next((m.get("fullname") for m in conv.get("members", []) if m.get("id") == last.get("useridfrom")),
-                       conv.get("name") or "")
-            self.notices.append(Notice(f"msg:{last['id']}", "me", "✉️", f"Mensagem de {who}", "",
-                                       plain(last.get("text"), 400), self.m.url(f"message/index.php?id={last.get('useridfrom')}"),
-                                       datetime.fromtimestamp(last.get("timecreated", 0), self.s.tz)))
+            full = self.m.call("core_message_get_conversation_messages", currentuserid=self.userid, convid=conv["id"],
+                               newest=True, limitfrom=0, limitnum=30)
+            names = {m.get("id"): m.get("fullname") for m in full.get("members", []) + conv.get("members", [])}
+            group = conv.get("name") if conv.get("type") == 2 else None
+            for msg in sorted(full.get("messages", []), key=lambda x: x["timecreated"]):
+                if msg["useridfrom"] == self.userid or msg["timecreated"] <= window:
+                    continue
+                who = names.get(msg["useridfrom"]) or "alguém"
+                key = f"msg:{msg['id']}"
+                when = datetime.fromtimestamp(msg["timecreated"], self.s.tz)
+                self.inbox_msgs.append((key, msg["timecreated"]))
+                if self._seen(key):
+                    continue
+                text = plain(msg.get("text"), 600)
+                if silent:
+                    backlog.append((msg["timecreated"], who + (f" ({group})" if group else ""), text))
+                    continue
+                self.notices.append(Notice(key, "me", "✉️", f"Mensagem de {who}" + (f" em {group}" if group else ""),
+                                           "", f"<i>{h(fmt(when))}</i>\n{h(text)}",
+                                           self.m.url(f"message/index.php?convid={conv['id']}"), when))
+        if backlog and not self.first_run:
+            backlog.sort()
+            # Cabe com folga no limite do Telegram (4.000 caracteres): 12 itens de até 150 caracteres.
+            def short(x: str) -> str:
+                return x if len(x) <= 150 else x[:150].rsplit(" ", 1)[0] + "…"
+            lines = [f"• <b>{h(who)}</b> — {h(fmt(datetime.fromtimestamp(t, self.s.tz)))}\n  {h(short(text))}"
+                     for t, who, text in backlog[-12:]]
+            if len(backlog) > 12:
+                lines.insert(0, f"(as {len(backlog) - 12} mais antigas estão no Moodle)")
+            self.notices.append(Notice(f"msgbacklog:{self.now:%Y-%m-%d}", "me", "✉️",
+                                       f"{len(backlog)} mensagem(ns) recebida(s) nos últimos 7 dias",
+                                       "", "\n".join(lines), self.m.url("message/index.php")))
+
+    def _daily_check(self) -> None:
+        """Uma vez por dia, só no seu chat: confere tudo o que o Moodle registrou para você nas últimas 24 h
+        (notificações e mensagens) contra o que foi enviado aqui. O que faltar sai agora mesmo."""
+        key = f"check:{self.now:%Y-%m-%d}"
+        if self.first_run or self.now.hour < self.s.digest_hour or key in self.state.data.setdefault("seen", {}):
+            return
+        self._seen(key)
+        since = (self.now - timedelta(days=1)).timestamp()
+        pending = {n.key for n in self.notices}
+        seen = self.state.data["seen"]
+        kinds = {"forum": "fórum", "assign": "tarefas", "quiz": "questionários", "moodle": "conteúdo da sala"}
+        count: dict[str, int] = {}
+        sent = covered = 0
+        for n in getattr(self, "inbox_notifs", []):
+            if (n.get("timecreated") or 0) < since:
+                continue
+            comp = (n.get("component") or "").split("_")[-1]
+            label = kinds.get(comp, "outras")
+            count[label] = count.get(label, 0) + 1
+            k = f"notif:{n['id']}"
+            if k in self.covered:
+                covered += 1
+            elif k in seen or k in pending:
+                sent += 1
+        msgs = [k for k, t in getattr(self, "inbox_msgs", []) if t >= since]
+        total = sum(count.values()) + len(msgs)
+        if not total:
+            return                     # dia sem nada no Moodle: sem mensagem
+        else:
+            parts = [f"{v} de {k}" for k, v in sorted(count.items())] + ([f"{len(msgs)} mensagem(ns)"] if msgs else [])
+            body = (f"Nas últimas 24 h o Moodle registrou {total} item(ns) para você: {', '.join(parts)}.\n"
+                    f"✅ {sent + len(msgs)} enviado(s) aqui"
+                    + (f" e {covered} já coberto(s) por lembrete ou aviso do mesmo assunto." if covered else "."))
+        self.notices.append(Notice(key, "me", "🔎", f"Verificação do dia ({self.now:%d/%m})", "", body))
 
     def _daily_digest(self, courses: list[dict], group_ids: set[int]) -> None:
         """Uma vez por dia (a partir de RESUMO_HORA): prazos dos próximos 7 dias."""

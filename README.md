@@ -12,7 +12,10 @@ Avisos do Moodle do NEAD/IFB no **Telegram**, que chegam no celular e no PC ao m
 - ⏰ lembretes de prazo: 3 dias antes, 1 dia antes e no dia; 🗓 resumo diário com os prazos da semana;
 - 📊 **nota lançada ou alterada** e 💬 comentário do professor (só no seu chat);
 - 🔴 o que **você** ainda não entregou, ⚠️ prazo perdido e 📋 resumo diário das suas pendências (só no seu chat);
-- 🔔 notificações e ✉️ mensagens do Moodle (só no seu chat).
+- ✉️ **toda mensagem recebida** no Moodle, uma por uma (conversas individuais e em grupo), e 🔔 as notificações
+  do Moodle sem repetir o que já foi avisado (só no seu chat);
+- 🔎 **verificação do dia**: confere tudo o que o Moodle registrou para você nas últimas 24 h contra o que
+  chegou no Telegram, e o que faltar sai na hora (só no seu chat).
 
 **Grupo da turma (opcional):** recebe só o que é igual para todos (atividades e alterações, avisos, respostas
 do professor, eventos e prazos). Nunca recebe notas, notificações, mensagens ou entregas pessoais.

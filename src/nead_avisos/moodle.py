@@ -27,6 +27,7 @@ READ_ONLY_FUNCTIONS = frozenset({
     "mod_forum_get_discussion_posts",      # respostas nos fóruns
     "core_course_get_updates_since",       # o que o professor alterou em cada atividade
     "gradereport_user_get_grade_items",    # suas notas e comentários
+    "core_message_get_conversation_messages",   # mensagens recebidas, uma por uma
 })
 
 

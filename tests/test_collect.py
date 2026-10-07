@@ -52,6 +52,9 @@ class FakeMoodle(Moodle):
             return {"conversations": self.convs}
         if function == "core_course_get_updates_since":
             return {"instances": self.updates.get(params["courseid"], [])}
+        if function == "core_message_get_conversation_messages":
+            conv = next(c for c in self.convs if c["id"] == params["convid"])
+            return {"messages": conv["messages"], "members": conv["members"]}
         if function == "mod_forum_get_discussion_posts":
             return {"posts": self.replies.get(params["discussionid"], [])}
         if function == "gradereport_user_get_grade_items":
@@ -111,10 +114,10 @@ def test_deadline_reminders_at_3_1_0_days(tmp_path):
 def test_unread_message_only_to_me(tmp_path):
     m, state = FakeMoodle(), State(tmp_path / "s.json")
     run(m, state)
-    m.convs = [{"unreadcount": 1, "members": [{"id": 9, "fullname": "Colega"}],
+    m.convs = [{"id": 40, "type": 1, "members": [{"id": 9, "fullname": "Colega"}],
                 "messages": [{"id": 300, "useridfrom": 9, "text": "<p>Oi!</p>", "timecreated": NOW.timestamp()}]}]
     msgs = run(m, state, NOW + timedelta(minutes=5))
-    assert [(n.key, n.audience, n.title) for n in msgs] == [("msg:300", "me", "Mensagem de Colega")]
+    assert [(n.key, n.audience, n.title) for n in msgs if not n.key.startswith("check:")] ==         [("msg:300", "me", "Mensagem de Colega")]
 
 
 def test_helpers():
