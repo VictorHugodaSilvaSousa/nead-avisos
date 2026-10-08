@@ -88,6 +88,17 @@ def left(due: datetime, now: datetime) -> str:
     return f"venceu há {txt}" if past else f"faltam {txt}"
 
 
+def sent_label(dt: datetime, now: datetime) -> str:
+    """Quando algo foi ENVIADO, sem ambiguidade: 'hoje às 08:15', 'ontem (07/10, qua) às 21:10',
+    'em 05/10 (seg) às 21:10'. (Uma data solta parecia ser a data de hoje.)"""
+    days = (now.date() - dt.date()).days
+    if days == 0:
+        return f"hoje às {dt:%H:%M}"
+    if days == 1:
+        return f"ontem ({dt:%d/%m}, {WEEKDAYS[dt.weekday()]}) às {dt:%H:%M}"
+    return f"em {dt:%d/%m} ({WEEKDAYS[dt.weekday()]}) às {dt:%H:%M}"
+
+
 def clean_event_name(name: str) -> str:
     return re.sub(r" (está marcado|vence|é devido|deve ser|should be|is due).*$", "", name or "")
 
@@ -459,7 +470,7 @@ class Collector:
                     backlog.append((msg["timecreated"], who + (f" ({group})" if group else ""), text))
                     continue
                 self.notices.append(Notice(key, "me", "✉️", f"Mensagem de {who}" + (f" em {group}" if group else ""),
-                                           "", f"<i>{h(fmt(when))}</i>\n{h(text)}",
+                                           "", f"<i>Enviada {h(sent_label(when, self.now))}</i>\n\n{h(text)}",
                                            self.m.url(f"message/index.php?convid={conv['id']}"), when,
                                            extra={"urgent": True}))
         if backlog and not self.first_run:
@@ -467,7 +478,8 @@ class Collector:
             # Cabe com folga no limite do Telegram (4.000 caracteres): 12 itens de até 150 caracteres.
             def short(x: str) -> str:
                 return x if len(x) <= 150 else x[:150].rsplit(" ", 1)[0] + "…"
-            lines = [f"• <b>{h(who)}</b> — {h(fmt(datetime.fromtimestamp(t, self.s.tz)))}\n  {h(short(text))}"
+            lines = [f"• <b>{h(who)}</b> — enviada {h(sent_label(datetime.fromtimestamp(t, self.s.tz), self.now))}"
+                     f"\n  {h(short(text))}"
                      for t, who, text in backlog[-12:]]
             if len(backlog) > 12:
                 lines.insert(0, f"(as {len(backlog) - 12} mais antigas estão no Moodle)")
@@ -704,7 +716,7 @@ class Collector:
                         f"Novo tópico em {f.get('name')}: {d.get('name') or d.get('subject')}"
                     who = h(d.get("userfullname", "")) + (" (professor/mediação)" if staff and not news else "")
                     self.notices.append(Notice(key, aud, "📢" if news else "💬", title, course,
-                                               f"<i>{who}</i> · {h(fmt(created))}\n{h(plain(d.get('message')))}",
+                                               f"<i>{who}</i> · publicado {h(sent_label(created, self.now))}\n\n{h(plain(d.get('message')))}",
                                                url, created))
                     continue
                 if silent or d.get("timemodified", 0) <= old.get("tm", 0):
@@ -737,7 +749,7 @@ class Collector:
         last = (by_staff or fresh)[0]
         author = (last.get("author") or {}).get("fullname", "")
         when = datetime.fromtimestamp(last.get("timecreated", 0), self.s.tz)
-        body = (f"<i>{h(author)}{' (professor/mediação)' if by_staff else ''}</i> · {h(fmt(when))}\n"
+        body = (f"<i>{h(author)}{' (professor/mediação)' if by_staff else ''}</i> · respondeu {h(sent_label(when, self.now))}\n\n"
                 f"{h(plain(last.get('message'), 500))}")
         if len(fresh) > 1:
             body += f"\n\n+{len(fresh) - 1} outra(s) resposta(s) nesta discussão."

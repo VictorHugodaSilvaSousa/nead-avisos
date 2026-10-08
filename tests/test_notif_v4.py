@@ -98,3 +98,14 @@ def test_quiet_hours_send_without_sound_except_urgent(tmp_path, monkeypatch):
     cli._run(s, dry_run=False)
     silent = {t.split("<b>", 1)[1].split("</b>")[0]: q for _, t, q in sent}
     assert silent == {"Nova atividade": True, "Você ainda não entregou": False, "Envio confirmado": True}
+
+
+def test_sent_time_is_never_confused_with_today():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from nead_avisos.collect import sent_label
+    tz = ZoneInfo("America/Sao_Paulo")
+    now = datetime(2026, 10, 8, 9, 0, tzinfo=tz)
+    assert sent_label(datetime(2026, 10, 8, 8, 15, tzinfo=tz), now) == "hoje às 08:15"
+    assert sent_label(datetime(2026, 10, 7, 21, 10, tzinfo=tz), now) == "ontem (07/10, qua) às 21:10"
+    assert sent_label(datetime(2026, 10, 5, 21, 10, tzinfo=tz), now) == "em 05/10 (seg) às 21:10"
