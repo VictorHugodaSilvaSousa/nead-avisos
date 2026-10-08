@@ -24,6 +24,25 @@ def e(text) -> str:
     return html.escape("" if text is None else str(text), quote=False)
 
 
+BUTTONS = [("msg", "💬 Responder no Moodle"), ("mine", "📝 Abrir e entregar"), ("late", "📝 Abrir a tarefa"),
+           ("due", "📝 Abrir a tarefa"), ("grade", "📊 Ver nota"), ("feedback", "📝 Ver comentário"),
+           ("post", "📢 Abrir aviso"), ("postedit", "📢 Abrir aviso"), ("reply", "💬 Abrir discussão"),
+           ("topic", "💬 Abrir discussão"), ("event", "📆 Ver no calendário"), ("eventday", "📆 Ver no calendário"),
+           ("eventchange", "📆 Ver no calendário"), ("edit", "✏️ Ver o que mudou"), ("duechange", "📅 Abrir a tarefa"),
+           ("cfg", "⚙️ Abrir a atividade"), ("mod", "📖 Abrir no Moodle"), ("msgbacklog", "💬 Abrir mensagens")]
+
+
+NOTIF_BUTTONS = {"📢": "📢 Abrir aviso", "📝": "📝 Ver comentário", "✏️": "✏️ Ver o que mudou", "🆕": "📖 Abrir",
+                 "✅": "✅ Ver envio"}
+
+
+def button_label(n: Notice) -> str:
+    prefix = n.key.split(":", 1)[0]
+    if prefix == "notif":
+        return NOTIF_BUTTONS.get(n.icon, "Abrir no Moodle")
+    return next((label for p, label in BUTTONS if p == prefix), "Abrir no Moodle")
+
+
 def render(n: Notice) -> str:
     head = f"{n.icon} <b>{e(n.title)}</b>"
     if n.course:
@@ -60,11 +79,11 @@ class Telegram:
                 time.sleep(2)
         return {"ok": False, "description": "limite de tentativas"}
 
-    def send(self, chat_id: int, notice: Notice) -> bool:
+    def send(self, chat_id: int, notice: Notice, silent: bool = False) -> bool:
         payload = {"chat_id": chat_id, "text": render(notice), "parse_mode": "HTML",
-                   "disable_web_page_preview": True}
+                   "disable_web_page_preview": True, "disable_notification": silent}
         if notice.url:
-            payload["reply_markup"] = {"inline_keyboard": [[{"text": "Abrir no Moodle", "url": notice.url}]]}
+            payload["reply_markup"] = {"inline_keyboard": [[{"text": button_label(notice), "url": notice.url}]]}
         result = self._api("sendMessage", payload)
         new_id = (result.get("parameters") or {}).get("migrate_to_chat_id")
         if not result.get("ok") and new_id:

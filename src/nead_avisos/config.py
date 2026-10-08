@@ -53,6 +53,7 @@ class Settings:
     group_courses: list[int] = field(default_factory=list)     # vazio = mesmas salas acompanhadas
     data_dir: Path = PROJECT_ROOT / "data"
     silent_first_run: bool = False             # 1ª execução sem nenhum envio (ex.: ao migrar para a nuvem)
+    quiet_hours: tuple[int, int] | None = (22, 7)  # avisos chegam SEM som nesse horário (urgentes tocam)
 
     @property
     def tz(self) -> ZoneInfo:
@@ -77,6 +78,12 @@ class Settings:
         s.exclude_courses = _ints(g("EXCLUIR_SALAS"))
         s.group_courses = _ints(g("SALAS_DO_GRUPO"))
         s.silent_first_run = g("PRIMEIRA_EXECUCAO_SILENCIOSA", "").lower() in ("1", "true", "sim")
+        quiet = g("SILENCIO", "22-7").replace(" ", "")
+        if quiet in ("", "0", "nao", "não", "off"):
+            s.quiet_hours = None
+        elif "-" in quiet and all(x.isdigit() for x in quiet.split("-", 1)):
+            a, b = (int(x) for x in quiet.split("-", 1))
+            s.quiet_hours = (a % 24, b % 24)
         if g("DATA_DIR"):
             s.data_dir = Path(g("DATA_DIR"))
         return s

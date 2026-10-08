@@ -20,6 +20,12 @@ Avisos do Moodle do NEAD/IFB no **Telegram**, que chegam no celular e no PC ao m
 **Grupo da turma (opcional):** recebe só o que é igual para todos (atividades e alterações, avisos, respostas
 do professor, eventos e prazos). Nunca recebe notas, notificações, mensagens ou entregas pessoais.
 
+**Como chegam:** cada aviso diz quanto tempo falta para o prazo ("faltam 22 h") e tem um botão que leva direto
+ao lugar certo ("📝 Abrir e entregar", "💬 Responder no Moodle", "📊 Ver nota"...). As notificações do Moodle chegam
+traduzidas: "✏️ Alterado pelo professor", "🆕 Novo na sala", "📝 Feedback do professor", "✅ Envio confirmado"
+(esta sempre sem som). O lembrete da turma não se repete no seu chat quando você já recebe o lembrete pessoal do
+mesmo prazo.
+
 Quando uma versão nova traz tipos de aviso novos, a primeira execução só registra o estado atual. Assim não
 chega uma enxurrada de "novidades" antigas.
 
@@ -104,6 +110,7 @@ O log fica em `data\avisos.log`. Para remover a tarefa: `scripts\uninstall-windo
 |---|---|---|
 | `NEAD_AVISOS_LEMBRETES_DIAS` | `3,1,0` | dias de antecedência dos lembretes de prazo |
 | `NEAD_AVISOS_RESUMO_HORA` | `7` | hora do resumo diário dos prazos da semana |
+| `NEAD_AVISOS_SILENCIO` | `22-7` | avisos chegam **sem som** nesse horário; mensagens e prazos urgentes tocam (`0` desliga) |
 | `NEAD_AVISOS_INCLUIR_SALAS` / `EXCLUIR_SALAS` | — | ids de salas para forçar a inclusão ou a exclusão |
 | `NEAD_AVISOS_SALAS_DO_GRUPO` | turma atual + Coordenação | quais salas vão para o grupo da turma |
 

@@ -73,6 +73,21 @@ def fmt(dt: datetime) -> str:
     return f"{dt:%d/%m} ({WEEKDAYS[dt.weekday()]}) {dt:%H:%M}"
 
 
+def left(due: datetime, now: datetime) -> str:
+    """'faltam 2 dias', 'faltam 5 h', 'faltam 40 min' (ou 'venceu há 3 dias')."""
+    secs = (due - now).total_seconds()
+    past, secs = secs < 0, abs(secs)
+    if secs >= 2 * 86400:
+        txt = f"{int(secs // 86400)} dias"
+    elif secs >= 86400:
+        txt = f"1 dia e {int(secs % 86400 // 3600)} h"
+    elif secs >= 3600:
+        txt = f"{int(secs // 3600)} h"
+    else:
+        txt = f"{max(int(secs // 60), 1)} min"
+    return f"venceu há {txt}" if past else f"faltam {txt}"
+
+
 def clean_event_name(name: str) -> str:
     return re.sub(r" (está marcado|vence|é devido|deve ser|should be|is due).*$", "", name or "")
 
@@ -102,12 +117,14 @@ class Collector:
         self.mod_url: dict[int, str] = {}      # cmid -> link (para notas)
         self.edited: set[int] = set()          # cmids com aviso de alteração nesta execução
         self.covered: dict[str, str] = {}      # notificação do Moodle não reenviada -> por quê (verificação)
+        self._notif_twins: set[tuple] = set()
 
     # ------------------------------------------------------------------ salas acompanhadas
     def courses(self) -> list[dict]:
         info = self.m.call("core_webservice_get_site_info")
         self.userid = info["userid"]
         enrolled = self.m.call("core_enrol_get_users_courses", userid=self.userid)
+        self.short_names = {c.get("shortname", ""): short_course(c["fullname"]) for c in enrolled if c.get("shortname")}
         now_ts = self.now.timestamp()
         out = []
         student = [c for c in enrolled if c["id"] in self.s.include_courses or "student" in self._roles(c["id"])]
@@ -162,6 +179,7 @@ class Collector:
         self._daily_digest(courses, group_ids)
         self._my_digest()
         self._daily_check()
+        self._no_double_reminders()
         self._group_bursts()
         if self.first_run:
             self.state.data["initialized"] = self.now.isoformat()
@@ -231,8 +249,9 @@ class Collector:
             when = "HOJE" if days == 0 else ("amanhã" if days == 1 else f"em {days} dias")
             self.notices.append(Notice(
                 f"due:{ev['id']}:{stage}", aud, "⏰", f"Prazo {when}: {clean_event_name(ev['name'])}",
-                short_course(names.get(ev.get("courseid"), "")), f"Entrega até {fmt(due)}",
-                self.instance_url.get((ev["modulename"], ev.get("instance"))), due))
+                short_course(names.get(ev.get("courseid"), "")), f"Entrega até {fmt(due)} — {left(due, self.now)}",
+                self.instance_url.get((ev["modulename"], ev.get("instance"))), due,
+                extra={"event": ev["id"], "urgent": days == 0}))
 
     def _my_events(self, days_back: int = 30, days_ahead: int = 7) -> list[dict]:
         """Seus itens AINDA NÃO CONCLUÍDOS (o Moodle tira da lista o que você já entregou)."""
@@ -263,7 +282,7 @@ class Collector:
                                                     if actionable else
                                                     "O envio está encerrado: fale com o professor ou o mediador."))
                 self.notices.append(Notice(f"late:{ev['id']}", "me", "⚠️", f"Prazo perdido: {name}", course, body,
-                                           ev.get("url"), due))
+                                           ev.get("url"), due, extra={"urgent": actionable}))
                 continue
             if not actionable:
                 continue
@@ -275,7 +294,8 @@ class Collector:
             when = (f"em {max(int(hours), 1)} hora(s)" if stage == "6h" else
                     "HOJE" if days == 0 else "amanhã" if days == 1 else f"em {days} dias")
             self.notices.append(Notice(f"mine:{ev['id']}:{stage}", "me", "🔴", f"Você ainda não entregou ({when}): {name}",
-                                       course, f"Vence {fmt(due)}", ev.get("url"), due))
+                                       course, f"Vence {fmt(due)} — <b>{h(left(due, self.now))}</b>", ev.get("url"),
+                                       due, extra={"event": ev["id"], "urgent": stage in ("6h", "0d")}))
 
     def _my_digest(self) -> None:
         """Uma vez por dia, só no seu chat: tudo o que está atrasado e o que vence nos próximos 7 dias."""
@@ -343,10 +363,64 @@ class Collector:
             if (ref := self._ref(n.get("contexturl"))) and ref in refs:
                 self.covered[key] = "mesmo assunto já avisado"
                 continue
-            self.notices.append(Notice(key, "me", "🔔", plain(n.get("subject"), 150), "",
-                                       plain(n.get("smallmessage") or n.get("fullmessage"), 400),
-                                       n.get("contexturl"),
-                                       datetime.fromtimestamp(n.get("timecreated", 0), self.s.tz)))
+            icon, title, course, body = self._humanize(n)
+            twin = (title, n.get("contexturl"))
+            if twin in self._notif_twins:            # o Moodle às vezes manda a mesma notificação 2 vezes
+                self.covered[key] = "notificação repetida do Moodle"
+                continue
+            self._notif_twins.add(twin)
+            self.notices.append(Notice(key, "me", icon, title, course, body, n.get("contexturl"),
+                                       datetime.fromtimestamp(n.get("timecreated", 0), self.s.tz),
+                                       extra={"kind": "notif", "quiet": icon == "✅"}))   # confirmação: sem som
+
+    def _course_label(self, text: str) -> str:
+        """'[TDS_M3] Sistemas Operacionais 2026/2' ou 'BDII_2026/2' -> nome curto da disciplina."""
+        for short, name in sorted(getattr(self, "short_names", {}).items(), key=lambda kv: -len(kv[0])):
+            if short and short in (text or ""):              # sigla oficial da sala (ex.: BDII_2026/2)
+                return name
+        m = re.search(r"\[[^\]]+\][^:.]*?20\d{2}\s*/\s*[12]", text or "")
+        return short_course(m.group(0)) if m else ""
+
+    def _humanize(self, n: dict) -> tuple[str, str, str, str]:
+        """Notificação do Moodle -> (ícone, título, disciplina, texto) em linguagem direta, sem rodapés."""
+        subj = plain(n.get("subject"), 200)
+        small = plain(n.get("smallmessage") or n.get("fullmessage"), 700)
+        small = re.sub(r"\s*(Altere suas preferências de notificação|Change your notification preferences).*$",
+                       "", small, flags=re.S | re.I).strip()
+        et, comp = n.get("eventtype") or "", n.get("component") or ""
+        course = self._course_label(subj + " " + small)
+        if et == "coursecontentupdated":
+            m = re.match(r"(.+?) (foi alterad[oa]|é nov[oa]|was updated|is new) (?:no curso|in the course)", small)
+            if m:
+                item, new = m.group(1).strip(), m.group(2).startswith(("é nov", "is new"))
+                body = ("⚠️ O nome menciona <b>prazo</b>: confira a data." if "prazo" in item.lower() else "")
+                return ("🆕", f"Novo na sala: {item}", course, body) if new else \
+                       ("✏️", f"Alterado pelo professor: {item}", course, body)
+        if comp == "mod_assign":
+            m = re.match(r"Você enviou sua tarefa para (.+)", subj) or re.match(r"You have submitted.* for (.+)", subj)
+            if m:
+                return "✅", f"Envio confirmado: {m.group(1).strip()}", course, ""
+            m = re.match(r"(.+?) retornou feedback para a tarefa (.+)", subj)
+            if m:
+                return ("📝", f"Feedback do professor: {m.group(2).strip()}", course,
+                        f"<i>{h(m.group(1).strip())}</i> comentou a sua entrega. Abra para ler.")
+        if comp == "mod_quiz" and et == "confirmation":
+            return "✅", f"Questionário enviado: {subj.split(':', 1)[-1].strip()}", course, ""
+        if comp == "mod_forum":
+            title = re.sub(r"^\[[^\]]+\]\s*\S+:\s*", "", subj) or subj
+            m = re.match(r"(.+?) (?:enviou mensagem|posted) (?:em|in) (?:[^:]+): ([^:]+):", small)
+            body = f"<i>{h(m.group(1))}</i> publicou em {h(m.group(2))}." if m else h(small)
+            return "📢", title, course, body
+        body = "" if small.strip() == subj.strip() else h(small)
+        return "🔔", subj, course, body
+
+    def _no_double_reminders(self) -> None:
+        """Quem tem o lembrete pessoal ('você ainda não entregou') não recebe também, no chat pessoal, o lembrete
+        da turma do mesmo prazo: esse vai só para o grupo."""
+        mine = {n.extra.get("event") for n in self.notices if n.key.startswith("mine:")}
+        for n in self.notices:
+            if n.key.startswith("due:") and n.extra.get("event") in mine:
+                n.extra["skip_me"] = True
 
     def _messages(self) -> None:
         """Toda mensagem recebida, de qualquer conversa (individual ou em grupo), uma por uma.
@@ -386,7 +460,8 @@ class Collector:
                     continue
                 self.notices.append(Notice(key, "me", "✉️", f"Mensagem de {who}" + (f" em {group}" if group else ""),
                                            "", f"<i>{h(fmt(when))}</i>\n{h(text)}",
-                                           self.m.url(f"message/index.php?convid={conv['id']}"), when))
+                                           self.m.url(f"message/index.php?convid={conv['id']}"), when,
+                                           extra={"urgent": True}))
         if backlog and not self.first_run:
             backlog.sort()
             # Cabe com folga no limite do Telegram (4.000 caracteres): 12 itens de até 150 caracteres.

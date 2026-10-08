@@ -207,11 +207,17 @@ def _run(s: Settings, dry_run: bool) -> int:
     # Grupo que virou supergrupo numa execução anterior: usa o id novo guardado no estado.
     group_id = state.data.get("group_migrated", {}).get(str(s.telegram_group_id), s.telegram_group_id)
     partial = state.data.setdefault("partial", {})      # aviso -> chats que JÁ receberam (nunca repete)
+    quiet = False
+    if s.quiet_hours:
+        a, b = s.quiet_hours
+        quiet = (a <= now.hour or now.hour < b) if a > b else (a <= now.hour < b)
     for n in sorted(notices, key=lambda n: (n.when or now)):
         dests = [s.telegram_chat_id] + ([group_id] if n.audience == "group" and group_id else [])
+        if n.extra.get("skip_me") and group_id and n.audience == "group":
+            dests = [group_id]               # você já recebe o lembrete pessoal do mesmo prazo
         info = partial.get(n.key, {"done": [], "since": now.isoformat()})
         for chat in dests:
-            if chat not in info["done"] and tg.send(chat, n):
+            if chat not in info["done"] and tg.send(chat, n, silent=n.extra.get("quiet") or (quiet and not n.extra.get("urgent"))):
                 info["done"].append(chat)
         if all(chat in info["done"] for chat in dests):
             sent += 1
