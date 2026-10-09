@@ -353,6 +353,12 @@ def _alert(s: Settings, text: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Saída redirecionada (tarefa agendada, .exe) pode usar cp1252: um emoji não pode derrubar o programa.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(prog="nead-avisos", description="Avisos do Moodle do NEAD no Telegram")
     sub = parser.add_subparsers(dest="cmd")
     sub.add_parser("assistente", help="configuração passo a passo (abre ao dar dois cliques no .exe)")
