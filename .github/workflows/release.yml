@@ -40,9 +40,15 @@ jobs:
           $h = (Get-FileHash dist/NEAD-Avisos.exe -Algorithm SHA256).Hash.ToLower()
           "$h  NEAD-Avisos.exe" | Out-File -Encoding ascii dist/NEAD-Avisos.exe.sha256
           Write-Host "SHA-256: $h"
+      - name: Pacote do plugin do Moodle
+        # zip com caminhos "neadavisos/..." e barras normais (o instalador do Moodle, em Linux, exige).
+        shell: bash
+        run: python packaging/plugin_zip.py moodle-plugin/neadavisos dist/message_neadavisos.zip
       - name: Anexar à versão
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         shell: bash
-        run: gh release upload "$TAG" dist/NEAD-Avisos.exe dist/NEAD-Avisos.exe.sha256 --clobber
+        run: >
+          gh release upload "$TAG" dist/NEAD-Avisos.exe dist/NEAD-Avisos.exe.sha256
+          dist/message_neadavisos.zip dist/message_neadavisos.zip.sha256 --clobber

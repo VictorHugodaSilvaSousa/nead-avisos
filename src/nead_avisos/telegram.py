@@ -129,8 +129,22 @@ class Telegram:
         return bool(self._api("sendMessage", {"chat_id": chat_id, "text": text[:LIMIT], "parse_mode": "HTML",
                                               "disable_web_page_preview": True}).get("ok"))
 
-    def updates(self) -> list[dict]:
-        return self._api("getUpdates", {}).get("result", [])
+    def updates(self, offset: int | None = None) -> list[dict]:
+        params = {"offset": offset, "timeout": 0} if offset else {}
+        return self._api("getUpdates", params).get("result", [])
+
+    def owner_commands(self, owner_chat: int, offset: int | None) -> tuple[list[tuple[int, str]], int | None]:
+        """Comandos ('/pendencias', '/prazos', '/ajuda') mandados pelo DONO no chat privado. Mensagens de qualquer
+        outra pessoa ou de grupos são ignoradas. Devolve (comandos, próximo offset)."""
+        cmds, nxt = [], offset
+        for u in self.updates(offset):
+            nxt = max(nxt or 0, u["update_id"] + 1)
+            msg = u.get("message") or {}
+            chat = msg.get("chat") or {}
+            text = (msg.get("text") or "").strip().split("@")[0].split(" ")[0].lower()
+            if chat.get("type") == "private" and chat.get("id") == owner_chat and text.startswith("/"):
+                cmds.append((u["update_id"], text))
+        return cmds, nxt
 
     def pairing_chat(self, code: str, updates: list[dict] | None = None) -> dict | None:
         """Chat privado que enviou '/start <code>' (link de pareamento). Ninguém mais é aceito."""

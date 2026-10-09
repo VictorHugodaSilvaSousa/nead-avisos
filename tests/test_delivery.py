@@ -17,6 +17,8 @@ class FakeApi:
         self.sent, self.group_works = [], group_works
 
     def __call__(self, tg, method, payload):
+        if method == "getUpdates":
+            return {"ok": True, "result": []}
         chat = payload.get("chat_id")
         if chat == OLD_GROUP:
             return {"ok": False, "description": "Bad Request: group chat was upgraded to a supergroup chat",

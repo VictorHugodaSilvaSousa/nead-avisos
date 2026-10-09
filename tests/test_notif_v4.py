@@ -69,8 +69,9 @@ def test_button_labels():
 
 def test_quiet_hours_send_without_sound_except_urgent(tmp_path, monkeypatch):
     sent = []
-    monkeypatch.setattr(Telegram, "_api", lambda self, m, p: sent.append((p.get("chat_id"), p.get("text", "")[:40],
-                                                                          p.get("disable_notification"))) or {"ok": True})
+    monkeypatch.setattr(Telegram, "_api", lambda self, m, p: {"ok": True, "result": []} if m == "getUpdates" else
+                        sent.append((p.get("chat_id"), p.get("text", "")[:40], p.get("disable_notification")))
+                        or {"ok": True})
     monkeypatch.setattr(cli, "get_secret", lambda name: "1:a")
     monkeypatch.setattr(cli, "_moodle", lambda s: type("M", (), {"calls": 0})())
     monkeypatch.setattr("time.sleep", lambda x: None)

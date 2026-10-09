@@ -143,6 +143,7 @@ class Collector:
         self.edited: set[int] = set()          # cmids com aviso de alteração nesta execução
         self.covered: dict[str, str] = {}      # notificação do Moodle não reenviada -> por quê (verificação)
         self._notif_twins: set[tuple] = set()
+        self.commands: list[tuple[int, str]] = []    # (id da atualização, comando) pedidos por você ao robô
 
     # ------------------------------------------------------------------ salas acompanhadas
     def courses(self) -> list[dict]:
@@ -204,6 +205,7 @@ class Collector:
         self._daily_digest(courses, group_ids)
         self._my_digest()
         self._daily_check()
+        self._commands(courses, group_ids)
         self._no_double_reminders()
         self._group_bursts()
         if self.first_run:
@@ -322,10 +324,11 @@ class Collector:
                                        course, f"Vence {fmt(due)} — <b>{h(left(due, self.now))}</b>", ev.get("url"),
                                        due, extra={"event": ev["id"], "urgent": stage in ("6h", "0d")}))
 
-    def _my_digest(self) -> None:
-        """Uma vez por dia, só no seu chat: tudo o que está atrasado e o que vence nos próximos 7 dias."""
-        key = f"mydigest:{self.now:%Y-%m-%d}"
-        if self.now.hour < self.s.digest_hour or key in self.state.data.setdefault("seen", {}):
+    def _my_digest(self, force_key: str | None = None) -> None:
+        """Uma vez por dia, só no seu chat: tudo o que está atrasado e o que vence nos próximos 7 dias.
+        Com force_key: agora, a pedido (comando /pendencias)."""
+        key = force_key or f"mydigest:{self.now:%Y-%m-%d}"
+        if not force_key and (self.now.hour < self.s.digest_hour or key in self.state.data.setdefault("seen", {})):
             return
         self._seen(key)
         late, soon = [], []
@@ -439,6 +442,26 @@ class Collector:
         body = "" if small.strip() == subj.strip() else h(small)
         return "🔔", subj, course, body
 
+    COMMANDS_HELP = ("Comandos (a resposta chega em até 15 minutos):\n"
+                     "/pendencias — o que você ainda não entregou (atrasadas e próximos 7 dias)\n"
+                     "/prazos — prazos da turma nos próximos 7 dias\n"
+                     "/ajuda — esta lista")
+
+    def _commands(self, courses: list[dict], group_ids: set[int]) -> None:
+        """Responde aos comandos que VOCÊ mandou ao robô (o envio só vai para o seu chat)."""
+        for update_id, cmd in self.commands:
+            key = f"cmd:{update_id}"
+            if key in self.state.data.setdefault("seen", {}):
+                continue
+            if cmd in ("/pendencias", "/pendências"):
+                self._my_digest(force_key=key)
+            elif cmd == "/prazos":
+                self._daily_digest(courses, group_ids, force_key=key)
+            else:
+                self._seen(key)
+                self.notices.append(Notice(key, "me", "🤖", "NEAD Avisos", "", self.COMMANDS_HELP,
+                                           extra={"urgent": True}))
+
     def _no_double_reminders(self) -> None:
         """Quem tem o lembrete pessoal ('você ainda não entregou') não recebe também, no chat pessoal, o lembrete
         da turma do mesmo prazo: esse vai só para o grupo."""
@@ -536,10 +559,11 @@ class Collector:
                     + (f" e {covered} já coberto(s) por lembrete ou aviso do mesmo assunto." if covered else "."))
         self.notices.append(Notice(key, "me", "🔎", f"Verificação do dia ({self.now:%d/%m})", "", body))
 
-    def _daily_digest(self, courses: list[dict], group_ids: set[int]) -> None:
-        """Uma vez por dia (a partir de RESUMO_HORA): prazos dos próximos 7 dias."""
-        key = f"digest:{self.now:%Y-%m-%d}"
-        if self.now.hour < self.s.digest_hour or key in self.state.data.setdefault("seen", {}):
+    def _daily_digest(self, courses: list[dict], group_ids: set[int], force_key: str | None = None) -> None:
+        """Uma vez por dia (a partir de RESUMO_HORA): prazos dos próximos 7 dias. Com force_key: agora, a pedido
+        (comando /prazos), só no seu chat."""
+        key = force_key or f"digest:{self.now:%Y-%m-%d}"
+        if not force_key and (self.now.hour < self.s.digest_hour or key in self.state.data.setdefault("seen", {})):
             return
         events = self.m.call("core_calendar_get_calendar_events",
                              events={"courseids": [c["id"] for c in courses]},
@@ -554,7 +578,9 @@ class Collector:
                              f"{clean_event_name(ev['name'])}")
         self._seen(key)
         body = "\n".join(items) if items else "Nenhum prazo nos próximos 7 dias. 🎉"
-        self.notices.append(Notice(key, "group", "🗓", f"Prazos da semana ({self.now:%d/%m})", "", body))
+        self.notices.append(Notice(key, "me" if force_key else "group", "🗓",
+                                   f"Prazos da semana ({self.now:%d/%m})", "", body,
+                                   extra={"urgent": True} if force_key else {}))
 
     def _group_bursts(self, limit: int = 3) -> None:
         """Mais de `limit` itens novos na mesma sala de uma vez -> uma mensagem só, com a lista e os links."""

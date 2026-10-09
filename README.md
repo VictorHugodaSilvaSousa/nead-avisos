@@ -42,6 +42,17 @@ chega uma enxurrada de "novidades" antigas.
   encerrados ficam de fora.
 - Para parar e apagar tudo deste PC: `nead-avisos apagar-tudo`.
 
+**Pergunte ao robô quando quiser** (só você, no chat privado; a resposta chega em até 15 minutos):
+`/pendencias` (o que você ainda não entregou), `/prazos` (prazos da turma nos próximos 7 dias) e `/ajuda`.
+
+## Para o NEAD: plugin do Moodle (todos os alunos, sem instalar nada)
+
+A pasta [`moodle-plugin/neadavisos`](moodle-plugin/neadavisos) é um **plugin de notificação para o Moodle**. Com ele
+instalado pela administração, o Telegram vira um canal de notificação do próprio Moodle, ao lado do e-mail. Cada aluno
+conecta a conta em *Preferências → Preferências de notificação* e recebe **na hora** o que escolher, sem robô próprio,
+sem GitHub e sem senha. O `.zip` pronto para instalar está em cada versão (`message_neadavisos.zip`), e o guia para o
+administrador, com os detalhes de segurança e LGPD, está no [README do plugin](moodle-plugin/neadavisos/README.md).
+
 ## Para colegas: sem instalar nada
 
 1. Baixe o **NEAD-Avisos.exe** na página de versões:

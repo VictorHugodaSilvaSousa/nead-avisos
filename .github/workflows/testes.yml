@@ -23,3 +23,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -q -c constraints.txt . pytest
       - run: python -m pytest -q
+      - name: Plugin do Moodle (sintaxe + testes sem Moodle)
+        run: |
+          php -v | head -1
+          find moodle-plugin -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null
+          php moodle-plugin/testes-sem-moodle/harness.php

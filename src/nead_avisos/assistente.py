@@ -41,6 +41,18 @@ def _to_clipboard(text: str) -> None:
                    timeout=15)
 
 
+def forget_username() -> None:
+    """O usuário do Moodle (no NEAD, o CPF) só é preciso para gerar a chave: não fica gravado em lugar nenhum.
+    Remove a linha NEAD_AVISOS_USERNAME do .env deixada por versões antigas."""
+    path = PROJECT_ROOT / ".env"
+    if not path.is_file():
+        return
+    lines = path.read_text(encoding="utf-8").splitlines()
+    kept = [ln for ln in lines if not ln.strip().startswith("NEAD_AVISOS_USERNAME=")]
+    if kept != lines:
+        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+
+
 def _set_env(key: str, value: str) -> None:
     path = PROJECT_ROOT / ".env"
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
@@ -60,16 +72,19 @@ def passo_moodle() -> bool:
         print("Senha (não aparece enquanto digita; para colar use o BOTÃO DIREITO do mouse):")
         password = getpass.getpass("> ").strip()
         try:
-            token = get_token("https://nead.ifb.edu.br", user, password)
+            token = get_token(Settings.load().base_url, user, password)
         except AuthError:
             print("O Moodle recusou esse usuário/senha. Tente de novo.")
             continue
         except MoodleError as exc:
             print(f"Não consegui falar com o Moodle agora ({exc}). Verifique a internet.")
             return False
+        finally:
+            password = user = ""                 # não ficam na memória além do necessário
         set_secret("moodle_token", token)
-        _set_env("USERNAME", user)
-        print("✔ Login confirmado. Chave de acesso guardada com segurança no seu Windows.")
+        forget_username()                        # o usuário (CPF) não fica gravado
+        print("✔ Login confirmado. Chave de acesso guardada com segurança no seu Windows.\n"
+              "  Seu usuário e sua senha NÃO foram guardados.")
         return True
     return False
 

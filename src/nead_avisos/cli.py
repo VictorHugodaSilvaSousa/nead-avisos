@@ -41,7 +41,11 @@ def cmd_setup(s: Settings) -> int:
     except (AuthError, MoodleError) as exc:
         print(f"Não foi possível entrar: {exc}", file=sys.stderr)
         return 2
+    finally:
+        password = user = ""
     set_secret("moodle_token", token)
+    from .assistente import forget_username
+    forget_username()                    # o usuário (no NEAD, o CPF) não fica gravado no .env
     print("Pronto: a chave de acesso foi guardada no Gerenciador de Credenciais do Windows. A senha NÃO foi guardada.")
     return cmd_status(s)
 
@@ -252,6 +256,16 @@ def _run(s: Settings, dry_run: bool) -> int:
           + (" — novo" if not state.data and not state.reset_reason else ""))
     try:
         col = Collector(s, _moodle(s), state)
+        tg_for_cmds = get_secret("telegram_token")
+        if tg_for_cmds and s.telegram_chat_id and not dry_run:
+            # Comandos que você mandou ao robô desde a última execução (só do seu chat privado).
+            try:
+                col.commands, nxt = Telegram(tg_for_cmds).owner_commands(s.telegram_chat_id,
+                                                                         state.data.get("tg_offset"))
+                if nxt:
+                    state.data["tg_offset"] = nxt
+            except Exception:  # noqa: BLE001 — comandos são opcionais; os avisos seguem
+                col.commands = []
         notices = col.run()
     except AuthError as exc:
         print(f"ERRO: {exc}", file=sys.stderr)

@@ -78,7 +78,8 @@ def test_logs_never_show_titles(monkeypatch, capsys):
 def test_personal_notices_never_reach_the_class_group(tmp_path, monkeypatch):
     from nead_avisos import cli
     sent = []
-    monkeypatch.setattr(Telegram, "_api", lambda self, m, p: sent.append(p.get("chat_id")) or {"ok": True})
+    monkeypatch.setattr(Telegram, "_api", lambda self, m, p: {"ok": True, "result": []} if m == "getUpdates"
+                        else sent.append(p.get("chat_id")) or {"ok": True})
     monkeypatch.setattr("time.sleep", lambda x: None)
     monkeypatch.setattr(cli, "_moodle", lambda s: type("M", (), {"calls": 0})())
     import nead_avisos.config as cfg
@@ -108,3 +109,12 @@ def test_pairing_accepts_only_the_chat_that_sent_the_one_time_code():
     assert tg.pairing_chat("c0ffee12", updates)["id"] == 111
     assert tg.pairing_chat("c0ffee12", updates[:3]) is None
     assert tg.pairing_chat("c0ffee12", [{"message": {"chat": {"id": 9, "type": "private"}, "text": "c0ffee12"}}])["id"] == 9
+
+
+def test_moodle_username_cpf_is_never_kept_in_env(tmp_path, monkeypatch):
+    from nead_avisos import assistente
+    monkeypatch.setattr(assistente, "PROJECT_ROOT", tmp_path)
+    env = tmp_path / ".env"
+    env.write_text("NEAD_AVISOS_USERNAME=12345678900\nNEAD_AVISOS_TELEGRAM_CHAT_ID=111\n", encoding="utf-8")
+    assistente.forget_username()
+    assert env.read_text(encoding="utf-8") == "NEAD_AVISOS_TELEGRAM_CHAT_ID=111\n"
