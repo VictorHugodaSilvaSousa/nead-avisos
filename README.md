@@ -29,11 +29,18 @@ mesmo prazo.
 Quando uma versão nova traz tipos de aviso novos, a primeira execução só registra o estado atual. Assim não
 chega uma enxurrada de "novidades" antigas.
 
-**Segurança:**
+**Segurança e privacidade** (detalhes em [SECURITY.md](SECURITY.md)):
 - **Somente leitura:** o programa só consulta o Moodle e nunca envia, marca ou altera nada lá.
-- Cada pessoa usa o **próprio login**. A senha é usada uma única vez, para gerar a chave de acesso do app oficial do Moodle, e **não é guardada**.
-- A chave fica no Gerenciador de Credenciais do Windows ou, na nuvem, nos *Secrets* do GitHub.
-- Ele acompanha só as salas em que você é **aluno** e que estão em andamento. Salas de mediação e de semestres encerrados ficam de fora.
+- Cada pessoa usa o **próprio login**. A senha é usada uma única vez, para gerar a chave de acesso do app oficial
+  do Moodle, e **não é guardada**. A chave fica no Gerenciador de Credenciais do Windows ou, na nuvem, nos
+  *Secrets* do GitHub. Ela dá à conta o mesmo acesso do app oficial: **não a compartilhe com ninguém**.
+- O que o programa guarda (o que já foi avisado) fica **criptografado**, e textos como comentários de professores
+  e mensagens não ficam guardados: só passam pelo seu Telegram.
+- **Informações de alunos e professores ficam no seu chat.** O grupo da turma nunca recebe mensagens, notas,
+  comentários ou pendências pessoais, e os registros da nuvem não mostram nomes nem textos.
+- Ele acompanha só as salas em que você é **aluno** e que estão em andamento. Salas de mediação e de semestres
+  encerrados ficam de fora.
+- Para parar e apagar tudo deste PC: `nead-avisos apagar-tudo`.
 
 ## Para colegas: sem instalar nada
 
@@ -85,10 +92,12 @@ O log fica em `data\avisos.log`. Para remover a tarefa: `scripts\uninstall-windo
 1. Crie uma conta em https://github.com e um repositório **público** com esta pasta. O código não tem
    segredos, e em repositório público as execuções são ilimitadas. Os arquivos `.env` e `data/` não sobem
    (estão no `.gitignore`).
-2. No repositório, abra **Settings → Secrets and variables → Actions**:
-   - **Secrets:** `NEAD_AVISOS_MOODLE_TOKEN` e `NEAD_AVISOS_TELEGRAM_TOKEN`. Para ver a chave do Moodle,
-     rode `nead-avisos show-token` no PC.
-   - **Variables:** `NEAD_AVISOS_TELEGRAM_CHAT_ID` e, se quiser, `NEAD_AVISOS_TELEGRAM_GROUP_ID`.
+2. No repositório, abra **Settings → Secrets and variables → Actions → Secrets** e cadastre, como **Secrets**
+   (nunca como Variables: em repositório público, Variables aparecem nos registros):
+   - `NEAD_AVISOS_MOODLE_TOKEN`: rode `nead-avisos show-token` no PC (o valor é copiado, não aparece na tela);
+   - `NEAD_AVISOS_TELEGRAM_TOKEN`: o token do seu robô;
+   - `NEAD_AVISOS_TELEGRAM_CHAT_ID` e, se for o representante, `NEAD_AVISOS_TELEGRAM_GROUP_ID`;
+   - `NEAD_AVISOS_CHAVE_ESTADO`: rode `nead-avisos chave-nuvem` no PC. Ela criptografa o estado guardado no cache.
 3. Na aba **Actions**, habilite os workflows e clique em **NEAD Avisos → Run workflow** para testar.
 4. **A cada 15 minutos de verdade:** o agendamento grátis do GitHub atrasa muito e, na prática, roda só a cada
    3 a 7 horas. Para os avisos chegarem na hora, use o https://cron-job.org (grátis) para disparar o workflow:

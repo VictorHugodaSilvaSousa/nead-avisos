@@ -19,9 +19,9 @@ import sys
 from datetime import datetime, timedelta
 
 from .collect import Collector, short_course
-from .config import Settings, get_secret, set_secret
+from .config import SERVICE, Settings, get_secret, set_secret
 from .moodle import AuthError, Moodle, MoodleError, get_token
-from .state import State
+from .state import State, StateKeyError, state_key
 from .telegram import Telegram, e
 
 
@@ -58,6 +58,8 @@ def cmd_set_telegram() -> int:
     token = _clipboard()
     if ":" in token and len(token) >= 30 and " " not in token:
         print("Token lido da área de transferência (copiado do BotFather).")
+        from .assistente import _to_clipboard
+        _to_clipboard("")                     # o token não fica esquecido na área de transferência
     else:
         token = _ask_secret("Token do seu bot (do @BotFather): ")
     if ":" not in token or len(token) < 30:
@@ -95,15 +97,64 @@ def cmd_set_chat(kind: str, chat_id: str) -> int:
     return 0
 
 
+def _copy_secret(value: str, secret_name: str, warning: str) -> int:
+    """Copia um segredo para a área de transferência (nunca na tela) e apaga depois do ENTER."""
+    from .assistente import _to_clipboard
+    print(warning)
+    _to_clipboard(value)
+    print(f"\nO valor foi COPIADO (não aparece na tela). Cole no Secret '{secret_name}' do seu repositório:\n"
+          "Settings > Secrets and variables > Actions > New repository secret.")
+    try:
+        input("Depois de colar, aperte ENTER para apagar o valor da área de transferência...")
+    finally:
+        _to_clipboard("")
+    print("Área de transferência limpa.")
+    return 0
+
+
 def cmd_show_token() -> int:
-    """Mostra a chave do Moodle para colar no Secret do GitHub. É pessoal: não envie a ninguém."""
+    """Copia a chave do Moodle para colar no Secret do GitHub. É pessoal: não envie a ninguém."""
     token = get_secret("moodle_token")
     if not token:
         print("Moodle não configurado. Rode: nead-avisos setup", file=sys.stderr)
         return 2
-    print("ATENÇÃO: esta chave dá acesso de LEITURA à sua conta do Moodle. Cole-a só no Secret "
-          "NEAD_AVISOS_MOODLE_TOKEN do seu repositório e não a envie a ninguém.\n")
-    print(token)
+    return _copy_secret(token, "NEAD_AVISOS_MOODLE_TOKEN",
+                        "ATENÇÃO: esta chave dá acesso à sua conta do Moodle como o app oficial (o NEAD Avisos só lê, "
+                        "mas a chave em si permitiria mais). Cole-a SÓ no Secret do seu repositório e nunca a envie a "
+                        "ninguém. Se vazar: Moodle > seu perfil > Preferências > Chaves de segurança > Redefinir.")
+
+
+def cmd_cloud_key() -> int:
+    """Copia a chave que criptografa o estado, para o Secret NEAD_AVISOS_CHAVE_ESTADO da nuvem."""
+    from .state import state_key
+    return _copy_secret(state_key().decode(), "NEAD_AVISOS_CHAVE_ESTADO",
+                        "Esta chave criptografa o que o NEAD Avisos guarda (o que já foi avisado). Sem ela, o "
+                        "cache da nuvem é ilegível para qualquer pessoa.")
+
+
+def cmd_erase() -> int:
+    """Apaga tudo o que o NEAD Avisos guardou neste PC e explica como revogar as chaves."""
+    import shutil
+    import subprocess
+    s = Settings.load()
+    print("Isto apaga deste PC: o estado (o que já foi avisado), o registro, as chaves guardadas no Gerenciador de\n"
+          "Credenciais (Moodle, Telegram, criptografia) e a tarefa agendada. Os avisos param neste PC.")
+    if input("Digite APAGAR para confirmar: ").strip().upper() != "APAGAR":
+        print("Nada foi apagado.")
+        return 0
+    shutil.rmtree(s.data_dir, ignore_errors=True)
+    for name in ("moodle_token", "telegram_token", "chave_estado"):
+        try:
+            import keyring
+            keyring.delete_password(SERVICE, name)
+        except Exception:  # noqa: BLE001 — já não existia
+            pass
+    subprocess.run(["schtasks", "/Delete", "/TN", "NEAD-Avisos", "/F"], capture_output=True)
+    print("\nApagado deste PC. Para cortar o acesso de vez:\n"
+          "  1. Moodle > seu perfil > Preferências > Chaves de segurança > Redefinir (invalida a chave do app).\n"
+          "  2. Telegram > @BotFather > /mybots > seu robô > Delete Bot (ou Revoke current token).\n"
+          "  3. Se usava a nuvem: apague o seu repositório no GitHub (Settings > Delete this repository)\n"
+          "     e o agendamento no cron-job.org.")
     return 0
 
 
@@ -136,7 +187,7 @@ def _moodle(s: Settings) -> Moodle:
 
 def cmd_status(s: Settings) -> int:
     m = _moodle(s)
-    state = State(s.data_dir / "state.json")
+    state = State(s.data_dir / "state.json", key=state_key())
     col = Collector(s, m, state)
     courses = col.courses()
     group = col.group_course_ids(courses)
@@ -178,10 +229,23 @@ def cmd_run(s: Settings, dry_run: bool) -> int:
             lock.unlink(missing_ok=True)
 
 
+# Avisos com dado pessoal (mensagens, notas, comentários, pendências, notificações do Moodle, resumos pessoais):
+# só no chat da própria pessoa.
+PERSONAL_KINDS = frozenset({"msg", "msgbacklog", "notif", "grade", "feedback", "mine", "late", "mydigest", "check"})
+
+
 def _run(s: Settings, dry_run: bool) -> int:
     import time
     t0 = time.monotonic()
-    state = State(s.data_dir / "state.json")
+    try:
+        state = State(s.data_dir / "state.json", key=state_key())
+    except StateKeyError as exc:
+        print(f"ERRO: {exc}", file=sys.stderr)
+        _alert(s, f"⚠️ <b>NEAD Avisos parou</b>: {e(exc)}. Configure o Secret NEAD_AVISOS_CHAVE_ESTADO.")
+        return 1
+    if state.reset_reason:
+        print(f"Estado recomeçado do zero ({state.reset_reason}); esta execução só registra o estado atual.",
+              file=sys.stderr)
     try:
         col = Collector(s, _moodle(s), state)
         notices = col.run()
@@ -213,7 +277,8 @@ def _run(s: Settings, dry_run: bool) -> int:
     if notices and (not tg_token or not s.telegram_chat_id):
         print("Telegram não configurado: os avisos NÃO foram marcados como enviados.", file=sys.stderr)
         return 2
-    tg = Telegram(tg_token) if tg_token else None
+    from urllib.parse import urlparse
+    tg = Telegram(tg_token, link_host=urlparse(s.base_url).hostname) if tg_token else None
     # Grupo que virou supergrupo numa execução anterior: usa o id novo guardado no estado.
     group_id = state.data.get("group_migrated", {}).get(str(s.telegram_group_id), s.telegram_group_id)
     partial = state.data.setdefault("partial", {})      # aviso -> chats que JÁ receberam (nunca repete)
@@ -222,6 +287,8 @@ def _run(s: Settings, dry_run: bool) -> int:
         a, b = s.quiet_hours
         quiet = (a <= now.hour or now.hour < b) if a > b else (a <= now.hour < b)
     for n in sorted(notices, key=lambda n: (n.when or now)):
+        if n.audience == "group" and n.key.split(":", 1)[0] in PERSONAL_KINDS:
+            n.audience = "me"                 # trava: dado pessoal NUNCA vai para o grupo, mesmo com bug acima
         dests = [s.telegram_chat_id] + ([group_id] if n.audience == "group" and group_id else [])
         if n.extra.get("skip_me") and group_id and n.audience == "group":
             dests = [group_id]               # você já recebe o lembrete pessoal do mesmo prazo
@@ -235,7 +302,7 @@ def _run(s: Settings, dry_run: bool) -> int:
             continue
         failed += 1
         if datetime.fromisoformat(info["since"]) < now - timedelta(days=1):
-            print(f"Desistindo de '{n.title[:40]}' após 1 dia de falhas.", file=sys.stderr)
+            print(f"Desistindo de um aviso do tipo '{n.key.split(':', 1)[0]}' após 1 dia de falhas.", file=sys.stderr)
             partial.pop(n.key, None)                       # fica marcado como visto: não tenta mais
             continue
         partial[n.key] = info
@@ -288,7 +355,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("setup")
     sub.add_parser("set-telegram")
     sub.add_parser("chats")
-    sub.add_parser("show-token")
+    sub.add_parser("show-token", help="copia a chave do Moodle (para o Secret da nuvem), sem mostrar na tela")
+    sub.add_parser("chave-nuvem", help="copia a chave de criptografia do estado (Secret NEAD_AVISOS_CHAVE_ESTADO)")
+    sub.add_parser("apagar-tudo", help="apaga deste PC todos os dados e chaves do NEAD Avisos")
     p_chat = sub.add_parser("set-chat", help="define o seu chat privado (número de: nead-avisos chats)")
     p_chat.add_argument("chat_id")
     p_group = sub.add_parser("set-group", help="define o grupo da turma (número negativo de: nead-avisos chats)")
@@ -307,6 +376,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_set_telegram()
     if args.cmd == "chats":
         return cmd_chats()
+    if args.cmd == "chave-nuvem":
+        return cmd_cloud_key()
+    if args.cmd == "apagar-tudo":
+        return cmd_erase()
     if args.cmd == "show-token":
         return cmd_show_token()
     if args.cmd in ("set-chat", "set-group"):

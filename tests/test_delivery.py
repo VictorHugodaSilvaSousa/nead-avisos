@@ -31,7 +31,9 @@ def setup(tmp_path, monkeypatch, api, notices):
     s = Settings()
     s.data_dir, s.telegram_chat_id, s.telegram_group_id = tmp_path, ME, OLD_GROUP
     monkeypatch.setattr(Telegram, "_api", lambda self, m, p: api(self, m, p))
-    monkeypatch.setattr(cli, "get_secret", lambda name: "123:abc")
+    import nead_avisos.config as cfg
+    real = cfg.get_secret
+    monkeypatch.setattr(cli, "get_secret", lambda name: "123:abc" if name == "telegram_token" else real(name))
     monkeypatch.setattr(cli, "_moodle", lambda s: type("M", (), {"calls": 0})())
     monkeypatch.setattr("time.sleep", lambda x: None)
 
@@ -60,7 +62,8 @@ def test_supergroup_migration_is_followed_and_remembered(tmp_path, monkeypatch):
     assert cli._run(s, dry_run=False) == 0
     assert [c for c, _ in api.sent][:2] == [ME, NEW_GROUP]            # chegou no grupo novo
     assert any("virou supergrupo" in t and str(NEW_GROUP) in t for c, t in api.sent if c == ME)
-    state = State(tmp_path / "state.json")
+    from nead_avisos.state import state_key
+    state = State(tmp_path / "state.json", key=state_key())
     assert state.data["group_migrated"][str(OLD_GROUP)] == NEW_GROUP
 
 
@@ -71,10 +74,11 @@ def test_failure_only_in_group_never_repeats_in_private_chat(tmp_path, monkeypat
         cli._run(s, dry_run=False)
     private = [t for c, t in api.sent if c == ME and t.startswith("🗓")]
     assert len(private) == 1                                            # no seu chat: uma vez só
-    state = State(tmp_path / "state.json")
+    from nead_avisos.state import state_key
+    state = State(tmp_path / "state.json", key=state_key())
     assert "digest:2026-10-06" in state.data["partial"]                 # grupo continua pendente
     # depois de 1 dia de falhas, desiste (não fica tentando para sempre)
     state.data["partial"]["digest:2026-10-06"]["since"] = (datetime.now(s.tz) - timedelta(days=2)).isoformat()
     state.save()
     cli._run(s, dry_run=False)
-    assert "digest:2026-10-06" not in State(tmp_path / "state.json").data["partial"]
+    assert "digest:2026-10-06" not in State(tmp_path / "state.json", key=state_key()).data["partial"]

@@ -6,7 +6,7 @@ from nead_avisos import cli
 from nead_avisos.collect import Notice
 from nead_avisos.state import State
 from nead_avisos.telegram import LIMIT, Telegram, render
-from test_avisos_v3 import TEACHER, V3Moodle, disc, run, started
+from test_avisos_v3 import TEACHER, disc, run, started
 from test_collect import NOW
 
 ME = 7

@@ -1,0 +1,11 @@
+# Avisa (com pull request) quando sair correção de segurança para as ações do GitHub ou bibliotecas Python.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly

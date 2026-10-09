@@ -1,5 +1,6 @@
-# Gera o NEAD-Avisos.exe a partir do código deste repositório e anexa à versão (Release).
-# Assim o .exe que os colegas baixam é sempre construído do código público, em máquina limpa do GitHub.
+# Gera o NEAD-Avisos.exe a partir do código deste repositório e anexa à versão (Release), junto com o
+# SHA-256 do arquivo. Assim o .exe que os colegas baixam é sempre construído do código público, em máquina
+# limpa do GitHub, e qualquer um pode conferir que o arquivo baixado é exatamente o publicado.
 name: Gerar NEAD-Avisos.exe
 
 on:
@@ -18,23 +19,30 @@ jobs:
   exe:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
-      - run: pip install -q . pyinstaller pytest
+      - run: pip install -q -c constraints.txt . pyinstaller pytest
       - run: python -m pytest -q
-        continue-on-error: false
         shell: bash
         env:
           PYTHONPATH: src
       - run: >
           pyinstaller --noconfirm --onefile --console --name NEAD-Avisos --distpath dist --workpath build
           --specpath build --collect-data tzdata --hidden-import keyring.backends.Windows --copy-metadata keyring
-          --collect-submodules truststore packaging/entrada.py
+          --collect-submodules truststore --collect-submodules cryptography packaging/entrada.py
+      - name: SHA-256 do executável
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash dist/NEAD-Avisos.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  NEAD-Avisos.exe" | Out-File -Encoding ascii dist/NEAD-Avisos.exe.sha256
+          Write-Host "SHA-256: $h"
       - name: Anexar à versão
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         shell: bash
-        run: gh release upload "$TAG" dist/NEAD-Avisos.exe --clobber
+        run: gh release upload "$TAG" dist/NEAD-Avisos.exe dist/NEAD-Avisos.exe.sha256 --clobber

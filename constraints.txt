@@ -1,0 +1,20 @@
+# Versões exatas das dependências usadas na nuvem e no .exe (testadas). Evita que uma versão nova e
+# comprometida de alguma biblioteca entre sem revisão. Atualize junto com os testes (o Dependabot avisa).
+cffi==2.1.1
+cryptography==50.0.2
+jaraco.classes==3.4.0
+jaraco.context==6.1.2
+jaraco.functools==4.6.0
+keyring==25.7.0
+more-itertools==11.1.0
+pycparser==3.0
+pywin32-ctypes==0.2.3
+truststore==0.10.4
+tzdata==2026.5
+# testes e empacotamento
+pytest==9.1.1
+pluggy==1.6.0
+iniconfig==2.3.0
+packaging==26.3
+colorama==0.4.6
+pyinstaller==6.22.3

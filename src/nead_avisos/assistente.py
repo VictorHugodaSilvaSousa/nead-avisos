@@ -147,10 +147,14 @@ def instalar_na_nuvem() -> None:
         repo = input("\nCole aqui o endereço do SEU repositório (ex.: https://github.com/seu-usuario/nead-avisos): ")
         repo = repo.strip().removesuffix(".git").rstrip("/")
     s = Settings.load()
+    from .state import state_key
+    # Tudo como Secret: Secrets ficam ocultos nos registros (que são públicos em repositório público).
     items = [("secrets", "NEAD_AVISOS_MOODLE_TOKEN", get_secret("moodle_token")),
              ("secrets", "NEAD_AVISOS_TELEGRAM_TOKEN", get_secret("telegram_token")),
-             ("variables", "NEAD_AVISOS_TELEGRAM_CHAT_ID", str(s.telegram_chat_id))]
-    print("\nAgora vamos cadastrar 3 itens. Para cada um, vai abrir a página certa e o VALOR já vai estar copiado:")
+             ("secrets", "NEAD_AVISOS_TELEGRAM_CHAT_ID", str(s.telegram_chat_id)),
+             ("secrets", "NEAD_AVISOS_CHAVE_ESTADO", state_key().decode())]
+    print("\nAgora vamos cadastrar 4 itens SECRETOS. Para cada um, vai abrir a página certa e o VALOR já vai estar\n"
+          "copiado (ele não aparece na tela):")
     for kind, name, value in items:
         _to_clipboard(value)
         webbrowser.open(f"{repo}/settings/{kind}/actions/new")
@@ -162,7 +166,9 @@ def instalar_na_nuvem() -> None:
     webbrowser.open(f"{repo}/actions")
     print("\nPor fim, na aba Actions que abriu: clique em 'I understand my workflows, go ahead and enable them',\n"
           "depois em 'NEAD Avisos' > 'Run workflow' > 'Run workflow'. Em ~1 minuto chega no seu Telegram\n"
-          "'NEAD Avisos ativado na nuvem'. Depois disso, ele roda sozinho a cada ~20 minutos.")
+          "'NEAD Avisos ativado na nuvem'.\n\n"
+          "IMPORTANTE: o agendamento grátis do GitHub atrasa horas. Para receber a cada 15 minutos, siga a seção\n"
+          "'A cada 15 minutos de verdade' do README (cron-job.org, grátis, ~10 minutos de configuração).")
 
 
 def main() -> int:

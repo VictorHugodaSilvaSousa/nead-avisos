@@ -1,10 +1,17 @@
 # NEAD Avisos na nuvem (GitHub Actions): funciona com o PC DESLIGADO.
-# Segredos (Settings > Secrets and variables > Actions > Secrets):
-#   NEAD_AVISOS_MOODLE_TOKEN    chave do app do Moodle (gerada pelo `nead-avisos setup`; NÃO é a senha)
-#   NEAD_AVISOS_TELEGRAM_TOKEN  token do seu bot
-# Variáveis (aba Variables):
-#   NEAD_AVISOS_TELEGRAM_CHAT_ID, NEAD_AVISOS_TELEGRAM_GROUP_ID (opcional)
-# O estado (só identificadores do que já foi avisado) fica no cache do Actions, nunca no repositório.
+#
+# Secrets (Settings > Secrets and variables > Actions > Secrets) — nunca aparecem nos registros:
+#   NEAD_AVISOS_MOODLE_TOKEN       chave do app do Moodle (gerada pelo `nead-avisos setup`; NÃO é a senha)
+#   NEAD_AVISOS_TELEGRAM_TOKEN     token do seu robô
+#   NEAD_AVISOS_TELEGRAM_CHAT_ID   seu chat
+#   NEAD_AVISOS_TELEGRAM_GROUP_ID  grupo da turma (opcional, só para o representante)
+#   NEAD_AVISOS_CHAVE_ESTADO       chave que criptografa o estado (`nead-avisos chave-nuvem` mostra a sua)
+#
+# Segurança:
+#   - repositório público = registros públicos: o programa nunca escreve nomes, títulos ou textos nos registros;
+#   - o estado fica no cache do Actions CRIPTOGRAFADO (sem a chave, ninguém lê);
+#   - ações do GitHub fixadas por SHA e dependências Python com versões exatas (constraints.txt);
+#   - o token do GitHub desta execução só pode ler o código e mexer no próprio Actions.
 name: NEAD Avisos
 
 on:
@@ -16,7 +23,7 @@ on:
 
 permissions:
   contents: read
-  actions: write          # só para o passo "manter agendamento ativo"
+  actions: write          # reativar o agendamento e apagar estados antigos do cache
 
 concurrency:
   group: nead-avisos
@@ -27,13 +34,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
-      - run: pip install -q .
+      - run: pip install -q -c constraints.txt .
+      - name: Conferir configuração
+        env:
+          HAS_KEY: ${{ secrets.NEAD_AVISOS_CHAVE_ESTADO != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::warning::Falta o Secret NEAD_AVISOS_CHAVE_ESTADO: o estado fica sem criptografia. Rode 'nead-avisos chave-nuvem' no PC e cadastre o valor."
+          fi
       - name: Restaurar estado
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: data
           key: nead-avisos-state-${{ github.run_id }}
@@ -42,20 +58,21 @@ jobs:
         env:
           NEAD_AVISOS_MOODLE_TOKEN: ${{ secrets.NEAD_AVISOS_MOODLE_TOKEN }}
           NEAD_AVISOS_TELEGRAM_TOKEN: ${{ secrets.NEAD_AVISOS_TELEGRAM_TOKEN }}
-          NEAD_AVISOS_TELEGRAM_CHAT_ID: ${{ vars.NEAD_AVISOS_TELEGRAM_CHAT_ID }}
-          NEAD_AVISOS_TELEGRAM_GROUP_ID: ${{ vars.NEAD_AVISOS_TELEGRAM_GROUP_ID }}
+          NEAD_AVISOS_CHAVE_ESTADO: ${{ secrets.NEAD_AVISOS_CHAVE_ESTADO }}
+          # Secrets primeiro (ficam ocultos nos registros); Variables só para quem configurou na versão antiga.
+          NEAD_AVISOS_TELEGRAM_CHAT_ID: ${{ secrets.NEAD_AVISOS_TELEGRAM_CHAT_ID || vars.NEAD_AVISOS_TELEGRAM_CHAT_ID }}
+          NEAD_AVISOS_TELEGRAM_GROUP_ID: ${{ secrets.NEAD_AVISOS_TELEGRAM_GROUP_ID || vars.NEAD_AVISOS_TELEGRAM_GROUP_ID }}
           NEAD_AVISOS_DATA_DIR: data
           NEAD_AVISOS_PRIMEIRA_EXECUCAO_SILENCIOSA: "1"
         run: nead-avisos run
       - name: Salvar estado
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: data
           key: nead-avisos-state-${{ github.run_id }}
       - name: Manter agendamento ativo
         # O GitHub desliga workflows agendados de repositórios públicos após 60 dias sem alterações.
-        # Reativar pela API mantém os avisos funcionando sem precisar mexer no repositório.
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}

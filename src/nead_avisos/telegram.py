@@ -66,8 +66,9 @@ def render(n: Notice) -> str:
 
 
 class Telegram:
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, link_host: str | None = None) -> None:
         self.token = token
+        self.link_host = link_host      # botões só levam a este endereço (o Moodle), nunca a links de terceiros
         self.migrated: dict[int, int] = {}     # grupo que virou supergrupo: id antigo -> id novo
 
     def _api(self, method: str, payload: dict) -> dict:
@@ -94,7 +95,7 @@ class Telegram:
     def send(self, chat_id: int, notice: Notice, silent: bool = False) -> bool:
         payload = {"chat_id": chat_id, "text": render(notice), "parse_mode": "HTML",
                    "disable_web_page_preview": True, "disable_notification": silent}
-        if notice.url:
+        if notice.url and self.safe_link(notice.url):
             payload["reply_markup"] = {"inline_keyboard": [[{"text": button_label(notice), "url": notice.url}]]}
         result = self._api("sendMessage", payload)
         new_id = (result.get("parameters") or {}).get("migrate_to_chat_id")
@@ -112,9 +113,17 @@ class Telegram:
         ok = bool(result.get("ok"))
         if not ok:
             import sys
-            print(f"Telegram recusou '{notice.title[:40]}' para {chat_id}: {result.get('description')}", file=sys.stderr)
+            # Nunca o título (pode ter nome de aluno/professor): os registros da nuvem são públicos.
+            print(f"Telegram recusou um aviso do tipo '{notice.key.split(':', 1)[0]}': {result.get('description')}",
+                  file=sys.stderr)
         time.sleep(1.1)        # grupos aceitam ~20 mensagens/minuto
         return ok
+
+    def safe_link(self, url: str) -> bool:
+        """Só https e só o servidor do Moodle: um link estranho numa notificação não vira botão."""
+        from urllib.parse import urlparse
+        u = urlparse(url)
+        return u.scheme == "https" and (self.link_host is None or u.hostname == self.link_host)
 
     def send_text(self, chat_id: int, text: str) -> bool:
         return bool(self._api("sendMessage", {"chat_id": chat_id, "text": text[:LIMIT], "parse_mode": "HTML",

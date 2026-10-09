@@ -109,6 +109,20 @@ def short_course(name: str) -> str:
     return re.sub(r"\s*\(?\b20\d{2}\s*[/.-]\s*[12]\)?\s*$", "", name).strip() or name
 
 
+def digest(text: str | None) -> str:
+    """Impressão digital de um texto: permite saber se MUDOU sem guardar o texto no estado."""
+    import hashlib
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16] if text else ""
+
+
+def as_digest(value) -> str:
+    """Valor guardado no estado como hash. Estado antigo guardava o texto: converte na hora (sem falso 'alterado')."""
+    if not value:
+        return ""
+    value = str(value)
+    return value if re.fullmatch(r"[0-9a-f]{16}", value) else digest(value)
+
+
 def plain(text: str | None, limit: int = 600) -> str:
     """HTML do Moodle -> texto simples, curto."""
     text = re.sub(r"<(br|/p|/div|/li)\s*/?>", "\n", text or "", flags=re.I)
@@ -593,13 +607,13 @@ class Collector:
     @staticmethod
     def _fingerprint(mod: dict) -> dict:
         return {"name": mod.get("name") or "",
-                "desc": plain(mod.get("description"), 2000),
+                "desc": digest(plain(mod.get("description"), 2000)),
                 "dates": {d.get("dataid"): d.get("timestamp") for d in mod.get("dates", []) if d.get("timestamp")},
                 "files": {f.get("filename"): f.get("timemodified") for f in mod.get("contents") or []
                           if f.get("type") == "file" and f.get("filename")},
-                "avail": plain(mod.get("availabilityinfo"), 400)}
+                "avail": digest(plain(mod.get("availabilityinfo"), 400))}
 
-    def _changes(self, old: dict, new: dict) -> tuple[list[str], bool]:
+    def _changes(self, old: dict, new: dict, mod: dict | None = None) -> tuple[list[str], bool]:
         """Linhas legíveis do que mudou; e se a mudança foi SÓ de datas."""
         lines: list[str] = []
         if old.get("name") != new["name"]:
@@ -613,8 +627,9 @@ class Collector:
             fb = h(fmt(datetime.fromtimestamp(b, self.s.tz))) if b else "removido"
             lines.append(f"{label}: <s>{fa}</s> → <b>{fb}</b>")
         only_dates = bool(lines) and all(not x.startswith("Nome:") for x in lines)
-        if old.get("desc", "") != new["desc"]:
-            snippet = new["desc"] if len(new["desc"]) <= 350 else new["desc"][:350].rsplit(" ", 1)[0] + "…"
+        if as_digest(old.get("desc")) != new["desc"]:
+            text = plain((mod or {}).get("description"), 2000)            # o texto vem do Moodle, não do estado
+            snippet = text if len(text) <= 350 else text[:350].rsplit(" ", 1)[0] + "…"
             lines.append("Enunciado/descrição atualizado" + (f":\n<i>{h(snippet)}</i>" if snippet else " (removido)"))
             only_dates = False
         old_files = old.get("files", {})
@@ -626,8 +641,8 @@ class Collector:
         for name in old_files:
             if name not in new["files"]:
                 lines.append(f"📎 Arquivo removido: {h(name)}")
-        if old.get("avail", "") != new["avail"] and new["avail"]:
-            lines.append(f"Disponibilidade: {h(new['avail'])}")
+        if as_digest(old.get("avail")) != new["avail"] and new["avail"]:
+            lines.append(f"Disponibilidade: {h(plain((mod or {}).get('availabilityinfo'), 400))}")
         if any(x.startswith(("📎", "Disponibilidade")) for x in lines):
             only_dates = False
         return lines, only_dates
@@ -640,18 +655,18 @@ class Collector:
         prints[key] = new
         if old is None or silent:
             return
-        lines, only_dates = self._changes(old, new)
+        lines, only_dates = self._changes(old, new, mod)
         if not lines:
             return
         import hashlib
-        digest = hashlib.sha1(json.dumps(new, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:10]
+        fp_id = hashlib.sha1(json.dumps(new, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:10]
         prefix, icon, title = (("duechange", "📅", "Prazo alterado") if only_dates
                                else ("edit", "✏️", "Atividade alterada pelo professor"))
-        if self._seen(f"{prefix}:{mod['id']}:{digest}"):
+        if self._seen(f"{prefix}:{mod['id']}:{fp_id}"):
             return
         self.edited.add(mod["id"])
         due = next((new["dates"][k] for k in DUE_KEYS if new["dates"].get(k)), None)
-        self.notices.append(Notice(f"{prefix}:{mod['id']}:{digest}", aud, icon, f"{title}: {new['name']}",
+        self.notices.append(Notice(f"{prefix}:{mod['id']}:{fp_id}", aud, icon, f"{title}: {new['name']}",
                                    short_course(c["fullname"]), "\n".join(lines), mod.get("url"),
                                    datetime.fromtimestamp(due, self.s.tz) if only_dates and due else None))
 
@@ -778,7 +793,7 @@ class Collector:
                 grade = "" if grade in ("-", "") else grade
                 feedback = plain(item.get("feedback"), 600)
                 old = known.get(key)
-                known[key] = {"g": grade, "f": feedback}
+                known[key] = {"g": grade, "f": digest(feedback)}       # o comentário fica só no Telegram
                 if silent or old is None and not grade and not feedback:
                     continue
                 old = old or {"g": "", "f": ""}
@@ -786,7 +801,8 @@ class Collector:
                 rng = plain(item.get("rangeformatted"), 20)
                 url = self.mod_url.get(item.get("cmid"))
                 course = short_course(c["fullname"])
-                fb = f"\n💬 Comentário do professor:\n<i>{h(feedback)}</i>" if feedback and feedback != old["f"] else ""
+                changed_fb = feedback and digest(feedback) != old["f"] and feedback != old["f"]
+                fb = f"\n💬 Comentário do professor:\n<i>{h(feedback)}</i>" if changed_fb else ""
                 if grade and grade != old["g"]:
                     title = f"Nota lançada: {name}" if not old["g"] else f"Nota alterada: {name}"
                     text = (f"<b>{h(grade)}</b>" + (f" (escala {h(rng)})" if rng else "")
@@ -810,8 +826,11 @@ class Collector:
             if ev.get("modulename") or ev.get("eventtype") not in ("course", "group", "site", "category"):
                 continue
             eid = str(ev["id"])
-            stamp = [ev.get("timestart"), ev.get("timeduration"), ev.get("name"), plain(ev.get("description"), 300)]
+            stamp = [ev.get("timestart"), ev.get("timeduration"), digest(ev.get("name")),
+                     digest(plain(ev.get("description"), 300))]
             old = known.get(eid)
+            if old is not None and len(old) == 4:          # estado antigo guardava nome/descrição em texto
+                old = [old[0], old[1], as_digest(old[2]), as_digest(old[3])]
             known[eid] = stamp
             start = datetime.fromtimestamp(ev["timestart"], self.s.tz)
             aud = "group" if ev.get("courseid") in group_ids else "me"

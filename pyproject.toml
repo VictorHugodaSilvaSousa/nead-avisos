@@ -4,10 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nead-avisos"
-version = "0.1.0"
+version = "1.5.0"
 description = "Avisos do Moodle do NEAD/IFB no Telegram (somente leitura)"
 requires-python = ">=3.11"
-dependencies = ["truststore>=0.9", "tzdata>=2024.1", "keyring>=25; platform_system == 'Windows'"]
+dependencies = ["truststore>=0.9", "tzdata>=2024.1", "cryptography>=43",
+                "keyring>=25; platform_system == 'Windows'"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
