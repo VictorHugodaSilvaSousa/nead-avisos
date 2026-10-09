@@ -246,6 +246,10 @@ def _run(s: Settings, dry_run: bool) -> int:
     if state.reset_reason:
         print(f"Estado recomeçado do zero ({state.reset_reason}); esta execução só registra o estado atual.",
               file=sys.stderr)
+    # Só o formato do estado (nenhum dado): confirma nos registros que ele está protegido.
+    print("Estado: " + ("CRIPTOGRAFADO" if state.encrypted else "sem criptografia (falta a chave)")
+          + (" — convertido agora do formato antigo" if state.was_plain and state.encrypted else "")
+          + (" — novo" if not state.data and not state.reset_reason else ""))
     try:
         col = Collector(s, _moodle(s), state)
         notices = col.run()
