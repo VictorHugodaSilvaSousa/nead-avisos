@@ -705,7 +705,11 @@ class Collector:
                 url = self.m.url(f"mod/forum/discuss.php?d={d['discussion']}")
                 staff = self._is_staff(f["course"], d.get("userid"))
                 in_group = f["course"] in group_ids
+                mine = d.get("userid") == self.userid
                 if old is None:
+                    if mine:                       # tópico que VOCÊ criou: não é novidade para você
+                        self._seen(f"post:{did}" if news else f"topic:{did}")
+                        continue
                     # tópico novo (os do fórum de Avisos continuam com a chave antiga 'post:')
                     key = f"post:{did}" if news else f"topic:{did}"
                     if self._seen(key) or silent:
@@ -723,7 +727,7 @@ class Collector:
                     continue
                 if d.get("numreplies", 0) > old.get("n", 0):
                     self._new_replies(d, f, course, in_group, news, old, url)
-                elif news or staff:
+                elif (news or staff) and d.get("usermodified", d.get("userid")) != self.userid:
                     key = f"postedit:{did}:{d.get('timemodified')}"
                     if self._seen(key):
                         continue
@@ -739,7 +743,7 @@ class Collector:
         except Exception:  # noqa: BLE001
             return
         fresh = [p for p in data.get("posts", []) if (p.get("timecreated") or 0) > old.get("tm", 0)
-                 and p.get("parentid")]
+                 and p.get("parentid") and (p.get("author") or {}).get("id") != self.userid]   # sem as suas
         if not fresh:
             return
         key = f"reply:{d['discussion']}:{max(p['id'] for p in fresh)}"
@@ -827,6 +831,8 @@ class Collector:
                 if not self._seen(key):
                     self.notices.append(Notice(key, aud, "📆", f"Evento alterado: {ev['name']}", course, body,
                                                url, start))
+            if f"event:{eid}" in {n.key for n in self.notices}:
+                self._seen(f"eventday:{eid}")      # o "Novo evento" de hoje já diz o horário
             if start.date() == self.now.date() and start >= self.now and not self._seen(f"eventday:{eid}"):
                 self.notices.append(Notice(f"eventday:{eid}", aud, "⏰", f"Hoje às {start:%H:%M}: {ev['name']}",
                                            course, body, url, start))

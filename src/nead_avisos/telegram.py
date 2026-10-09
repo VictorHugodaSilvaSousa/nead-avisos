@@ -43,6 +43,11 @@ def button_label(n: Notice) -> str:
     return next((label for p, label in BUTTONS if p == prefix), "Abrir no Moodle")
 
 
+def plain_text(text: str) -> str:
+    """HTML do aviso -> texto simples (reserva quando o Telegram recusa a formatação)."""
+    return html.unescape(re.sub(r"<[^>]+>", "", text))
+
+
 def render(n: Notice) -> str:
     head = f"{n.icon} <b>{e(n.title)}</b>"
     if n.course:
@@ -50,7 +55,14 @@ def render(n: Notice) -> str:
     # body pode trazer <b>/<i> montados por nós; o resto do texto já vem escapado abaixo
     # Corpos montados com formatação já vêm escapados (collect.h); texto puro é escapado aqui.
     body = n.body if re.search(r"</?(b|i|s|a)[ >]", n.body) else e(n.body)
-    return (head + (f"\n\n{body}" if body else ""))[:LIMIT]
+    text = head + (f"\n\n{body}" if body else "")
+    if len(text) <= LIMIT:
+        return text
+    cut = text[:LIMIT - 20].rsplit("\n", 1)[0]          # corta numa quebra de linha
+    if cut.count("<") != cut.count(">") or len(re.findall(r"<(b|i|s|a)[ >]", cut)) != \
+            len(re.findall(r"</(b|i|s|a)>", cut)):
+        cut = e(plain_text(cut))                         # marcação incompleta: vai sem formatação
+    return cut + "\n…"
 
 
 class Telegram:
@@ -90,6 +102,12 @@ class Telegram:
             # O Telegram transformou o grupo em supergrupo (novo id): reenvia lá e guarda o id novo.
             self.migrated[chat_id] = new_id
             payload["chat_id"] = new_id
+            result = self._api("sendMessage", payload)
+        if not result.get("ok") and re.search(r"can't parse entities|message is too long|text is too long",
+                                              str(result.get("description")), re.I):
+            # Formatação quebrada ou texto longo demais: reenvia como texto simples (nunca trava o aviso).
+            payload["text"] = plain_text(render(notice))[:LIMIT]
+            payload.pop("parse_mode", None)
             result = self._api("sendMessage", payload)
         ok = bool(result.get("ok"))
         if not ok:

@@ -187,11 +187,21 @@ def _run(s: Settings, dry_run: bool) -> int:
         notices = col.run()
     except AuthError as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
-        _alert(s, f"⚠️ <b>NEAD Avisos</b>: {e(exc)}")
+        if _alert_due(state, "auth", hours=6):
+            _alert(s, f"⚠️ <b>NEAD Avisos parou</b>: {e(exc)}\nOs avisos voltam assim que a chave for renovada.")
+        state.save()
         return 1
     except MoodleError as exc:
         print(f"Moodle indisponível agora (tento de novo na próxima): {exc}", file=sys.stderr)
+        down = state.data.setdefault("down_since", datetime.now(s.tz).isoformat(timespec="seconds"))
+        if (datetime.now(s.tz) - datetime.fromisoformat(down)).total_seconds() > 6 * 3600 and \
+                _alert_due(state, "down", hours=12):
+            _alert(s, "⚠️ <b>NEAD Avisos</b>: o Moodle do NEAD está fora do ar (ou inacessível) desde "
+                      f"{datetime.fromisoformat(down):%d/%m %H:%M}. Os avisos voltam sozinhos quando ele normalizar.")
+        state.save()
         return 0          # instabilidade do site não é erro do programa; nada foi marcado como visto
+    if state.data.pop("down_since", None):
+        state.data.pop("alerted", None)
     now = datetime.now(s.tz)
     if dry_run:
         print(f"{len(notices)} aviso(s) seriam enviados (primeira execução: {col.first_run}):")
@@ -251,6 +261,18 @@ def _run(s: Settings, dry_run: bool) -> int:
     print(f"{now:%d/%m %H:%M} — {sent} aviso(s) enviado(s), {failed} falha(s), {col.m.calls} consulta(s) ao Moodle, "
           f"{time.monotonic() - t0:.0f}s.")
     return 0 if not failed else 3
+
+
+def _alert_due(state: State, kind: str, hours: int) -> bool:
+    """Evita repetir o mesmo alerta de erro a cada 15 min: no máximo 1 a cada `hours` horas."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    now = _dt.now(_tz.utc)
+    alerted = state.data.setdefault("alerted", {})
+    last = alerted.get(kind)
+    if last and now - _dt.fromisoformat(last) < _td(hours=hours):
+        return False
+    alerted[kind] = now.isoformat(timespec="seconds")
+    return True
 
 
 def _alert(s: Settings, text: str) -> None:

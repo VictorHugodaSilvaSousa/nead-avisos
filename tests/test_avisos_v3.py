@@ -130,7 +130,7 @@ def test_new_class_event_and_same_day_reminder(tmp_path):
                  "timestart": start.timestamp(), "timeduration": 3600, "description": "<p>Link no Meet</p>"}]
     out = {n.key: n for n in run(m, st, NOW + timedelta(minutes=15))}
     assert out["event:31"].title == "Novo evento: Aula síncrona" and out["event:31"].audience == "group"
-    assert out["eventday:31"].title.startswith("Hoje às")
+    assert "eventday:31" not in out                       # evento novo de hoje: um aviso só (já diz o horário)
     m.events[0]["timestart"] = (start + timedelta(days=1)).timestamp()
     changed = [n for n in run(m, st, NOW + timedelta(minutes=30)) if n.key.startswith("eventchange:31")]
     assert len(changed) == 1 and changed[0].title == "Evento alterado: Aula síncrona"
