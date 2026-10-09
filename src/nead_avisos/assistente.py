@@ -175,10 +175,24 @@ def instalar_na_nuvem() -> None:
           "'A cada 15 minutos de verdade' do README (cron-job.org, grátis, ~10 minutos de configuração).")
 
 
+PRIVACY = """Antes de começar, o que o NEAD Avisos faz com os seus dados:
+  • Usa o SEU login do Moodle só para LER: atividades, avisos, prazos, notas, mensagens e notificações.
+    Ele nunca envia, posta, responde ou altera nada no Moodle.
+  • Sua senha é usada uma vez para gerar a chave do app do Moodle e NÃO é guardada. A chave fica no
+    Gerenciador de Credenciais do Windows (ou nos Secrets do SEU GitHub, se escolher a nuvem).
+  • Os avisos vão só para o SEU robô do Telegram. Nada é enviado ao autor do programa nem a terceiros.
+  • O que fica guardado (o que já foi avisado) é criptografado; mensagens e comentários não ficam guardados.
+  • Para parar e apagar tudo: rode 'nead-avisos apagar-tudo'. Detalhes no arquivo SECURITY.md."""
+
+
 def main() -> int:
     _title("NEAD Avisos — configuração")
     print("Avisos do Moodle do NEAD no seu Telegram (celular e PC): novas atividades, avisos dos professores,\n"
-          "prazos chegando, prazos perdidos e suas pendências. Leva uns 5 minutos.")
+          "prazos chegando, prazos perdidos e suas pendências. Leva uns 5 minutos.\n")
+    print(PRIVACY)
+    if not _yes("\nEntendi e quero continuar?"):
+        print("Tudo bem, nada foi configurado.")
+        return 0
     if not passo_moodle():
         return 2
     tg = passo_bot()
