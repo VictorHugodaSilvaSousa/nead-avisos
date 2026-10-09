@@ -97,3 +97,14 @@ def test_personal_notices_never_reach_the_class_group(tmp_path, monkeypatch):
     s.data_dir, s.telegram_chat_id, s.telegram_group_id = tmp_path, 111, -999
     cli._run(s, dry_run=False)
     assert sent and -999 not in sent and set(sent) == {111}
+
+
+def test_pairing_accepts_only_the_chat_that_sent_the_one_time_code():
+    tg = Telegram("t")
+    updates = [{"message": {"chat": {"id": 666, "type": "private"}, "text": "/start"}},          # intruso
+               {"message": {"chat": {"id": 777, "type": "private"}, "text": "/start abc123"}},  # código errado
+               {"message": {"chat": {"id": -5, "type": "group"}, "text": "/start c0ffee12"}},  # grupo
+               {"message": {"chat": {"id": 111, "type": "private"}, "text": "/start c0ffee12"}}]
+    assert tg.pairing_chat("c0ffee12", updates)["id"] == 111
+    assert tg.pairing_chat("c0ffee12", updates[:3]) is None
+    assert tg.pairing_chat("c0ffee12", [{"message": {"chat": {"id": 9, "type": "private"}, "text": "c0ffee12"}}])["id"] == 9

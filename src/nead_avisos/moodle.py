@@ -97,7 +97,9 @@ class Moodle:
         if isinstance(result, dict) and result.get("exception"):
             code = result.get("errorcode", "")
             if code in ("invalidtoken", "accessexception"):
-                raise AuthError(f"Chave de acesso do Moodle inválida ou expirada ({code}). Rode: nead-avisos setup")
+                raise AuthError(f"Chave de acesso do Moodle inválida ou expirada ({code}). No PC: rode "
+                                "'nead-avisos setup'. Se usa a nuvem: depois rode 'nead-avisos show-token' e "
+                                "atualize o Secret NEAD_AVISOS_MOODLE_TOKEN")
             raise MoodleError(f"{function}: {code} {result.get('message', '')}".strip())
         return result
 

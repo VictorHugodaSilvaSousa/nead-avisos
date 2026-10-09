@@ -100,21 +100,25 @@ def passo_bot() -> Telegram | None:
 
 def passo_chat(tg: Telegram) -> bool:
     _title("Passo 3 de 4 — Ligar o robô ao seu Telegram")
+    import secrets
     bot = tg.me()
-    print(f"Vai abrir o seu robô @{bot.get('username')}. Aperte INICIAR (ou envie /start).")
-    webbrowser.open(f"https://t.me/{bot.get('username')}")
+    # Código de uso único: só o chat que enviar ESTE código vira o seu chat. Se outra pessoa falar com o robô
+    # ao mesmo tempo, ela é ignorada (não passa a receber os seus avisos).
+    code = secrets.token_hex(4)
+    print(f"Vai abrir o seu robô @{bot.get('username')}. Aperte INICIAR (o código {code} vai junto, sozinho).\n"
+          f"Se o botão não aparecer, envie para o robô a mensagem:  {code}")
+    webbrowser.open(f"https://t.me/{bot.get('username')}?start={code}")
     print("Aguardando sua mensagem para o robô", end="", flush=True)
     for _ in range(60):
-        for u in tg.updates():
-            chat = (u.get("message") or {}).get("chat") or {}
-            if chat.get("type") == "private":
-                _set_env("TELEGRAM_CHAT_ID", str(chat["id"]))
-                tg.send_text(chat["id"], "✅ Robô ligado! Você vai receber aqui os avisos do Moodle do NEAD.")
-                print(f"\n✔ Pronto, {chat.get('first_name', '')}! Confira a mensagem de teste no Telegram.")
-                return True
+        chat = tg.pairing_chat(code)
+        if chat:
+            _set_env("TELEGRAM_CHAT_ID", str(chat["id"]))
+            tg.send_text(chat["id"], "✅ Robô ligado! Você vai receber aqui os avisos do Moodle do NEAD.")
+            print(f"\n✔ Pronto, {chat.get('first_name', '')}! Confira a mensagem de teste no Telegram.")
+            return True
         print(".", end="", flush=True)
         time.sleep(3)
-    print("\nNão recebi a mensagem. Abra o robô no Telegram, envie /start e rode o assistente de novo.")
+    print(f"\nNão recebi o código. Abra o robô no Telegram, envie a mensagem {code} e rode o assistente de novo.")
     return False
 
 

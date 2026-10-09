@@ -132,5 +132,15 @@ class Telegram:
     def updates(self) -> list[dict]:
         return self._api("getUpdates", {}).get("result", [])
 
+    def pairing_chat(self, code: str, updates: list[dict] | None = None) -> dict | None:
+        """Chat privado que enviou '/start <code>' (link de pareamento). Ninguém mais é aceito."""
+        for u in updates if updates is not None else self.updates():
+            msg = u.get("message") or {}
+            chat = msg.get("chat") or {}
+            text = (msg.get("text") or "").strip()
+            if chat.get("type") == "private" and text in (f"/start {code}", code):
+                return chat
+        return None
+
     def me(self) -> dict:
         return self._api("getMe", {}).get("result", {})
