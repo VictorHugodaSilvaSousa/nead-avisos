@@ -137,6 +137,33 @@ def passo_chat(tg: Telegram) -> bool:
     return False
 
 
+def passo_grupo(tg: Telegram) -> None:
+    """Representante de turma: liga o grupo da turma (recebe só o que é igual para todos, em resumos)."""
+    import secrets
+    _title("Extra — Representante de turma: avisos no grupo da turma")
+    print("Se você é REPRESENTANTE, o grupo da sua turma pode receber os avisos gerais (atividades novas, avisos\n"
+          "dos professores, prazos), em resumos às 8h, 13h e 19h, e o que é urgente na hora. Nada pessoal seu\n"
+          "(notas, mensagens, pendências) vai para o grupo. Só UMA pessoa por turma deve fazer isso.")
+    if not _yes("Você é representante e quer ligar o grupo da turma?"):
+        return
+    bot = tg.me()
+    code = secrets.token_hex(4)
+    print(f"\n  1. No Telegram, abra o grupo da turma > adicionar membro > procure @{bot.get('username')} e adicione.\n"
+          f"  2. No grupo, envie exatamente:   /vincular {code}\n")
+    print("Aguardando a mensagem no grupo", end="", flush=True)
+    for _ in range(100):
+        chat = tg.pairing_group(code)
+        if chat:
+            _set_env("TELEGRAM_GROUP_ID", str(chat["id"]))
+            tg.send_text(chat["id"], "✅ <b>NEAD Avisos</b> ligado a este grupo. Vocês vão receber aqui os avisos "
+                                     "gerais da turma, em resumos às 8h, 13h e 19h (o urgente chega na hora).")
+            print(f"\n✔ Grupo '{chat.get('title', '')}' ligado.")
+            return
+        print(".", end="", flush=True)
+        time.sleep(3)
+    print("\nNão recebi o código no grupo. Rode o assistente de novo quando quiser.")
+
+
 def instalar_no_pc() -> None:
     """Tarefa agendada a cada 15 min, rodando SEM janela (lançador VBScript)."""
     vbs = PROJECT_ROOT / "rodar-sem-janela.vbs"
@@ -172,7 +199,9 @@ def instalar_na_nuvem() -> None:
              ("secrets", "NEAD_AVISOS_TELEGRAM_TOKEN", get_secret("telegram_token")),
              ("secrets", "NEAD_AVISOS_TELEGRAM_CHAT_ID", str(s.telegram_chat_id)),
              ("secrets", "NEAD_AVISOS_CHAVE_ESTADO", state_key().decode())]
-    print("\nAgora vamos cadastrar 4 itens SECRETOS. Para cada um, vai abrir a página certa e o VALOR já vai estar\n"
+    if s.telegram_group_id:
+        items.append(("secrets", "NEAD_AVISOS_TELEGRAM_GROUP_ID", str(s.telegram_group_id)))
+    print(f"\nAgora vamos cadastrar {len(items)} itens SECRETOS. Para cada um, vai abrir a página certa e o VALOR já vai estar\n"
           "copiado (ele não aparece na tela):")
     for kind, name, value in items:
         _to_clipboard(value)
@@ -213,6 +242,7 @@ def main() -> int:
     tg = passo_bot()
     if not tg or not passo_chat(tg):
         return 2
+    passo_grupo(tg)
     _title("Passo 4 de 4 — Onde ele vai rodar?")
     print("  1 = Neste PC (mais simples; só funciona com o PC ligado)\n"
           "  2 = Na nuvem pelo GitHub (funciona com o PC desligado; precisa de conta no GitHub)")

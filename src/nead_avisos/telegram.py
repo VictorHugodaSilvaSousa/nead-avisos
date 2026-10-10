@@ -125,9 +125,20 @@ class Telegram:
         u = urlparse(url)
         return u.scheme == "https" and (self.link_host is None or u.hostname == self.link_host)
 
-    def send_text(self, chat_id: int, text: str) -> bool:
-        return bool(self._api("sendMessage", {"chat_id": chat_id, "text": text[:LIMIT], "parse_mode": "HTML",
-                                              "disable_web_page_preview": True}).get("ok"))
+    def send_text(self, chat_id: int, text: str, silent: bool = False) -> bool:
+        payload = {"chat_id": chat_id, "text": text[:LIMIT], "parse_mode": "HTML", "disable_web_page_preview": True,
+                   "disable_notification": silent}
+        result = self._api("sendMessage", payload)
+        new_id = (result.get("parameters") or {}).get("migrate_to_chat_id")
+        if not result.get("ok") and new_id:
+            self.migrated[chat_id] = new_id
+            payload["chat_id"] = new_id
+            result = self._api("sendMessage", payload)
+        if not result.get("ok") and re.search(r"can't parse entities|too long", str(result.get("description")), re.I):
+            payload["text"] = plain_text(text)[:LIMIT]
+            payload.pop("parse_mode", None)
+            result = self._api("sendMessage", payload)
+        return bool(result.get("ok"))
 
     def updates(self, offset: int | None = None) -> list[dict]:
         params = {"offset": offset, "timeout": 0} if offset else {}
@@ -153,6 +164,17 @@ class Telegram:
             chat = msg.get("chat") or {}
             text = (msg.get("text") or "").strip()
             if chat.get("type") == "private" and text in (f"/start {code}", code):
+                return chat
+        return None
+
+    def pairing_group(self, code: str, updates: list[dict] | None = None) -> dict | None:
+        """Grupo em que alguém mandou '/vincular <code>' (o código só aparece na tela do representante)."""
+        for u in updates if updates is not None else self.updates():
+            msg = u.get("message") or {}
+            chat = msg.get("chat") or {}
+            words = (msg.get("text") or "").strip().split()
+            if (chat.get("type") in ("group", "supergroup") and len(words) == 2
+                    and words[0].split("@")[0].lower() == "/vincular" and words[1] == code):
                 return chat
         return None
 

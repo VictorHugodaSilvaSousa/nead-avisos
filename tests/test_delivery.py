@@ -32,6 +32,7 @@ class FakeApi:
 def setup(tmp_path, monkeypatch, api, notices):
     s = Settings()
     s.data_dir, s.telegram_chat_id, s.telegram_group_id = tmp_path, ME, OLD_GROUP
+    s.group_slots = None                      # estes testes tratam do envio imediato ao grupo
     monkeypatch.setattr(Telegram, "_api", lambda self, m, p: api(self, m, p))
     import nead_avisos.config as cfg
     real = cfg.get_secret

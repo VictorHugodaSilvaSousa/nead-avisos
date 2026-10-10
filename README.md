@@ -1,6 +1,17 @@
 # NEAD Avisos
 
-Avisos do Moodle do NEAD/IFB no **Telegram**, que chegam no celular e no PC ao mesmo tempo:
+Avisos do Moodle do NEAD/IFB no **Telegram**, que chegam no celular e no PC ao mesmo tempo.
+
+> Criado por **Victor Hugo da Silva Sousa**, estudante e representante da turma TDS (NEAD/IFB).
+
+**Instalar (Windows), um comando no PowerShell:**
+```
+irm https://raw.githubusercontent.com/VictorHugodaSilvaSousa/nead-avisos/main/instalar.ps1 | iex
+```
+Ele baixa a versão mais recente, **confere o SHA-256**, instala só para o seu usuário (sem administrador), cria os
+atalhos e abre o assistente. Para remover: `& "$env:LOCALAPPDATA\NEAD-Avisos\instalar.ps1" -Desinstalar`.
+
+O que ele avisa:
 
 - 📝 nova atividade ou material publicado pelo professor, com o link direto;
 - ✏️ **atividade alterada pelo professor**, dizendo o que mudou: nome, enunciado, arquivo novo, atualizado ou
@@ -17,8 +28,11 @@ Avisos do Moodle do NEAD/IFB no **Telegram**, que chegam no celular e no PC ao m
 - 🔎 **verificação do dia**: confere tudo o que o Moodle registrou para você nas últimas 24 h contra o que
   chegou no Telegram, e o que faltar sai na hora (só no seu chat).
 
-**Grupo da turma (opcional):** recebe só o que é igual para todos (atividades e alterações, avisos, respostas
-do professor, eventos e prazos). Nunca recebe notas, notificações, mensagens ou entregas pessoais.
+**Grupo da turma (opcional, ligado pelo representante: veja o [guia do representante](docs/representantes.md)):**
+recebe só o que é igual para todos (atividades e alterações, avisos, respostas do professor, eventos e prazos).
+Nunca recebe notas, notificações, mensagens ou entregas pessoais. Para não virar barulho, o grupo recebe **resumos por
+disciplina às 8h, 13h e 19h**; só o urgente (prazo que vence hoje, prazo alterado, evento de hoje) chega na hora.
+O seu chat pessoal recebe tudo na hora.
 
 **Como chegam:** cada aviso diz quanto tempo falta para o prazo ("faltam 22 h") e tem um botão que leva direto
 ao lugar certo ("📝 Abrir e entregar", "💬 Responder no Moodle", "📊 Ver nota"...). As notificações do Moodle chegam
@@ -55,6 +69,8 @@ administrador, com os detalhes de segurança e LGPD, está no [README do plugin]
 
 ## Para colegas: sem instalar nada
 
+O jeito mais fácil é o comando de instalação lá do começo. Se preferir baixar à mão:
+
 1. Baixe o **NEAD-Avisos.exe** na página de versões:
    https://github.com/VictorHugodaSilvaSousa/nead-avisos/releases/latest
 2. Dê **dois cliques** no arquivo. Se o Windows mostrar "O Windows protegeu o computador", clique em
@@ -68,6 +84,13 @@ Cada pessoa usa **o próprio login e o próprio robô**: ninguém precisa passar
 O **grupo da turma** é alimentado só pelo representante. Se cada colega ligasse o grupo, os avisos sairiam repetidos.
 
 ## 1. Instalar a partir do código (Windows)
+
+Um comando, na pasta do projeto: instala o Python 3.12 se faltar (winget), cria o `.venv` com as dependências nas
+versões testadas e roda os testes:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\instalar-codigo.ps1
+```
+Ou, à mão:
 
 ```powershell
 cd nead-avisos
@@ -130,8 +153,15 @@ O log fica em `data\avisos.log`. Para remover a tarefa: `scripts\uninstall-windo
 |---|---|---|
 | `NEAD_AVISOS_LEMBRETES_DIAS` | `3,1,0` | dias de antecedência dos lembretes de prazo |
 | `NEAD_AVISOS_RESUMO_HORA` | `7` | hora do resumo diário dos prazos da semana |
+| `NEAD_AVISOS_GRUPO_HORARIOS` | `8,13,19` | horários dos resumos do grupo da turma (`0` = cada novidade na hora) |
 | `NEAD_AVISOS_SILENCIO` | `22-7` | avisos chegam **sem som** nesse horário; mensagens e prazos urgentes tocam (`0` desliga) |
 | `NEAD_AVISOS_INCLUIR_SALAS` / `EXCLUIR_SALAS` | — | ids de salas para forçar a inclusão ou a exclusão |
 | `NEAD_AVISOS_SALAS_DO_GRUPO` | turma atual + Coordenação | quais salas vão para o grupo da turma |
 
 Comandos: `setup`, `set-telegram`, `chats`, `status` (salas acompanhadas e destino), `run [--dry-run]`.
+
+## Autoria
+
+**NEAD Avisos** foi idealizado e desenvolvido por **Victor Hugo da Silva Sousa** (TDS — NEAD/IFB), 2026.
+O plugin do Moodle (`moodle-plugin/neadavisos`) é distribuído sob a GNU GPL v3, como exige o Moodle, com o mesmo
+crédito de autoria em cada arquivo.

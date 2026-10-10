@@ -118,3 +118,12 @@ def test_moodle_username_cpf_is_never_kept_in_env(tmp_path, monkeypatch):
     env.write_text("NEAD_AVISOS_USERNAME=12345678900\nNEAD_AVISOS_TELEGRAM_CHAT_ID=111\n", encoding="utf-8")
     assistente.forget_username()
     assert env.read_text(encoding="utf-8") == "NEAD_AVISOS_TELEGRAM_CHAT_ID=111\n"
+
+
+def test_group_pairing_accepts_only_the_code_in_a_group():
+    tg = Telegram("t")
+    ups = [{"message": {"chat": {"id": 111, "type": "private"}, "text": "/vincular abcd1234"}},       # privado
+           {"message": {"chat": {"id": -7, "type": "supergroup"}, "text": "/vincular 00000000"}},     # código errado
+           {"message": {"chat": {"id": -8, "type": "supergroup"}, "text": "/vincular@nead_bot abcd1234"}}]
+    assert tg.pairing_group("abcd1234", ups)["id"] == -8
+    assert tg.pairing_group("abcd1234", ups[:2]) is None

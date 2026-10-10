@@ -54,6 +54,7 @@ class Settings:
     data_dir: Path = PROJECT_ROOT / "data"
     silent_first_run: bool = False             # 1ª execução sem nenhum envio (ex.: ao migrar para a nuvem)
     quiet_hours: tuple[int, int] | None = (22, 7)  # avisos chegam SEM som nesse horário (urgentes tocam)
+    group_slots: list[int] | None = field(default_factory=lambda: [8, 13, 19])  # resumo do grupo; None = na hora
 
     @property
     def tz(self) -> ZoneInfo:
@@ -84,6 +85,11 @@ class Settings:
         elif "-" in quiet and all(x.isdigit() for x in quiet.split("-", 1)):
             a, b = (int(x) for x in quiet.split("-", 1))
             s.quiet_hours = (a % 24, b % 24)
+        slots = g("GRUPO_HORARIOS", "8,13,19").replace(" ", "").lower()
+        if slots in ("0", "imediato", "na-hora", "nahora"):
+            s.group_slots = None
+        elif slots:
+            s.group_slots = sorted({int(x) % 24 for x in slots.split(",") if x.isdigit()}) or [8, 13, 19]
         if g("DATA_DIR"):
             s.data_dir = Path(g("DATA_DIR"))
         return s

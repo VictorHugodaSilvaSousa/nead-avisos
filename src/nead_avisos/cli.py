@@ -287,8 +287,12 @@ def _run(s: Settings, dry_run: bool) -> int:
     now = datetime.now(s.tz)
     if dry_run:
         print(f"{len(notices)} aviso(s) seriam enviados (primeira execução: {col.first_run}):")
+        from .group_digest import is_urgent_for_group
         for n in notices:
-            print(f"  [{n.audience}] {n.icon} {n.title} | {n.course}")
+            where = n.audience
+            if n.audience == "group" and s.group_slots and not is_urgent_for_group(n):
+                where = "group: resumo"
+            print(f"  [{where}] {n.icon} {n.title} | {n.course}")
         return 0
     tg_token = get_secret("telegram_token")
     sent = failed = 0
@@ -300,6 +304,8 @@ def _run(s: Settings, dry_run: bool) -> int:
     # Grupo que virou supergrupo numa execução anterior: usa o id novo guardado no estado.
     group_id = state.data.get("group_migrated", {}).get(str(s.telegram_group_id), s.telegram_group_id)
     partial = state.data.setdefault("partial", {})      # aviso -> chats que JÁ receberam (nunca repete)
+    from .group_digest import current_slot, entry as digest_entry, is_urgent_for_group, render as render_digest
+    group_queue = state.data.setdefault("group_queue", [])
     quiet = False
     if s.quiet_hours:
         a, b = s.quiet_hours
@@ -310,6 +316,11 @@ def _run(s: Settings, dry_run: bool) -> int:
         dests = [s.telegram_chat_id] + ([group_id] if n.audience == "group" and group_id else [])
         if n.extra.get("skip_me") and group_id and n.audience == "group":
             dests = [group_id]               # você já recebe o lembrete pessoal do mesmo prazo
+        if group_id in dests and s.group_slots and not is_urgent_for_group(n):
+            # Grupo em ritmo de resumo: entra na fila do próximo horário (não toca o celular de todo mundo agora).
+            if n.key not in {e["key"] for e in group_queue}:
+                group_queue.append(digest_entry(n, tg.safe_link))
+            dests = [d for d in dests if d != group_id]
         info = partial.get(n.key, {"done": [], "since": now.isoformat()})
         for chat in dests:
             if chat not in info["done"] and tg.send(chat, n, silent=n.extra.get("quiet") or (quiet and not n.extra.get("urgent"))):
@@ -326,6 +337,17 @@ def _run(s: Settings, dry_run: bool) -> int:
         partial[n.key] = info
         for key in n.extra.get("keys", [n.key]):          # tenta de novo na próxima, só onde faltou
             state.data.get("seen", {}).pop(key, None)
+    slot = current_slot(now, s.group_slots) if s.group_slots else None
+    if group_id and tg and group_queue and slot and state.data.get("group_last_slot") != slot:
+        messages = render_digest(group_queue, now)
+        if all(tg.send_text(group_id, text) for text in messages):
+            print(f"Resumo do grupo enviado: {len(group_queue)} item(ns) em {len(messages)} mensagem(ns).")
+            state.data["group_queue"] = []
+            state.data["group_last_slot"] = slot
+        else:
+            failed += 1                       # a fila fica para a próxima execução
+    elif slot and not group_queue:
+        state.data["group_last_slot"] = slot
     if tg and tg.migrated:
         moves = state.data.setdefault("group_migrated", {})
         for old, new in tg.migrated.items():
