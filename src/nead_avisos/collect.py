@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 
 from .config import Settings
 from .moodle import Moodle
+from .name_dates import deadline_from_name
 from .state import State
 
 ACTIVITY_LABEL = {"assign": "Tarefa", "quiz": "Questionário", "forum": "Fórum", "resource": "Arquivo",
@@ -145,6 +146,7 @@ class Collector:
         self.edited: set[int] = set()          # cmids com aviso de alteração nesta execução
         self.covered: dict[str, str] = {}      # notificação do Moodle não reenviada -> por quê (verificação)
         self._notif_twins: set[tuple] = set()
+        self.mod_deadlines: list[dict] = []   # prazos lidos das próprias atividades (para o que falta no calendário)
         self.commands: list[tuple[int, str]] = []    # (id da atualização, comando) pedidos por você ao robô
 
     # ------------------------------------------------------------------ salas acompanhadas
@@ -240,6 +242,15 @@ class Collector:
                 label = ACTIVITY_LABEL.get(mod.get("modname"), mod.get("modname", "Item"))
                 course = short_course(c["fullname"])
                 self.mod_url[mod["id"]] = mod.get("url")
+                source = "atividade" if due else None
+                if not due and mod.get("modname") in ("assign", "quiz", "lesson", "h5pactivity", "workshop"):
+                    by_name = deadline_from_name(mod.get("name", ""), term_of(c["fullname"]), self.s.tz)
+                    due, source = (int(by_name.timestamp()), "nome") if by_name else (None, None)
+                if due:
+                    self.mod_deadlines.append({"cmid": mod["id"], "modname": mod.get("modname"),
+                                               "instance": mod.get("instance"), "name": mod.get("name", ""),
+                                               "due": due, "url": mod.get("url"), "course": course, "aud": aud,
+                                               "courseid": c["id"], "source": source})
                 self.mods[mod["id"]] = {"name": mod.get("name"), "url": mod.get("url"),
                                         "new": key not in self.state.data.setdefault("seen", {})}
                 self._activity_edits(mod, c, aud, self.silent_edits)
@@ -281,6 +292,27 @@ class Collector:
                 short_course(names.get(ev.get("courseid"), "")), f"Entrega até {fmt(due)} — {left(due, self.now)}",
                 self.instance_url.get((ev["modulename"], ev.get("instance"))), due,
                 extra={"event": ev["id"], "urgent": days == 0}))
+        for d in self._missing_from_calendar(events, horizon + 1):
+            due = datetime.fromtimestamp(d["due"], self.s.tz)
+            days = (due.date() - self.now.date()).days
+            stage = next((x for x in sorted(self.s.reminder_days) if days <= x), None)
+            if stage is None or self._seen(f"due:m{d['cmid']}:{stage}"):
+                continue
+            when = "HOJE" if days == 0 else ("amanhã" if days == 1 else f"em {days} dias")
+            body = (f"Entrega até {fmt(due)} — {left(due, self.now)}\n<i>Prazo da atividade (não está no "
+                    "calendário do Moodle).</i>" if d["source"] == "atividade" else
+                    f"Entrega até {due:%d/%m} ({WEEKDAYS[due.weekday()]}), até o fim do dia\n<i>Prazo informado no "
+                    "nome da atividade (sem horário no Moodle).</i>")
+            self.notices.append(Notice(f"due:m{d['cmid']}:{stage}", d["aud"], "⏰", f"Prazo {when}: {d['name']}",
+                                       d["course"], body, d["url"], due, extra={"urgent": days == 0}))
+
+    def _missing_from_calendar(self, events: dict, days: int) -> list[dict]:
+        """Prazos de atividades que vencem nos próximos `days` dias e que o calendário não traz."""
+        covered = {(e.get("modulename"), e.get("instance")) for e in events.get("events", [])
+                   if e.get("eventtype") in REAL_DEADLINES}
+        limit = (self.now + timedelta(days=days)).timestamp()
+        return [d for d in self.mod_deadlines if self.now.timestamp() <= d["due"] <= limit
+                and (d["modname"], d["instance"]) not in covered]
 
     def _my_events(self, days_back: int = 30, days_ahead: int = 7) -> list[dict]:
         """Seus itens AINDA NÃO CONCLUÍDOS (o Moodle tira da lista o que você já entregou)."""
@@ -572,12 +604,18 @@ class Collector:
                              options={"timestart": int(self.now.timestamp()),
                                       "timeend": int((self.now + timedelta(days=7)).timestamp())})
         names = {c["id"]: c["fullname"] for c in courses}
-        items = []
-        for ev in sorted(events.get("events", []), key=lambda e: e["timestart"]):
+        rows = []
+        for ev in events.get("events", []):
             if ev.get("eventtype") in ("due", "close") and ev.get("modulename") and ev.get("courseid") in group_ids:
                 due = datetime.fromtimestamp(ev["timestart"], self.s.tz)
-                items.append(f"• {fmt(due)} — {short_course(names.get(ev['courseid'], ''))}: "
-                             f"{clean_event_name(ev['name'])}")
+                rows.append((ev["timestart"], f"• {fmt(due)} — {short_course(names.get(ev['courseid'], ''))}: "
+                                              f"{clean_event_name(ev['name'])}"))
+        for d in self._missing_from_calendar(events, 7):
+            if d["courseid"] in group_ids:
+                due = datetime.fromtimestamp(d["due"], self.s.tz)
+                when = fmt(due) if d["source"] == "atividade" else f"{due:%d/%m} ({WEEKDAYS[due.weekday()]}) fim do dia"
+                rows.append((d["due"], f"• {when} — {d['course']}: {d['name']}"))
+        items = [line for _, line in sorted(rows)]
         self._seen(key)
         body = "\n".join(items) if items else "Nenhum prazo nos próximos 7 dias. 🎉"
         self.notices.append(Notice(key, "me" if force_key else "group", "🗓",
