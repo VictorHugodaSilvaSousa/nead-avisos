@@ -307,6 +307,7 @@ def _run(s: Settings, dry_run: bool) -> int:
     group_id = state.data.get("group_migrated", {}).get(str(s.telegram_group_id), s.telegram_group_id)
     partial = state.data.setdefault("partial", {})      # aviso -> chats que JÁ receberam (nunca repete)
     from .group_digest import current_slot, entry as digest_entry, is_urgent_for_group, render as render_digest
+    from .mute import is_muted
     group_queue = state.data.setdefault("group_queue", [])
     quiet = False
     if s.quiet_hours:
@@ -318,6 +319,8 @@ def _run(s: Settings, dry_run: bool) -> int:
         dests = [s.telegram_chat_id] + ([group_id] if n.audience == "group" and group_id else [])
         if n.extra.get("skip_me") and group_id and n.audience == "group":
             dests = [group_id]               # você já recebe o lembrete pessoal do mesmo prazo
+        if is_muted(n, state.data.get("muted", [])):
+            dests = [d for d in dests if d != s.telegram_chat_id]     # você silenciou esse tipo (/silenciar)
         if group_id in dests and s.group_slots and not is_urgent_for_group(n):
             # Grupo em ritmo de resumo: entra na fila do próximo horário (não toca o celular de todo mundo agora).
             if n.key not in {e["key"] for e in group_queue}:

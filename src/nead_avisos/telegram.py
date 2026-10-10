@@ -146,17 +146,18 @@ class Telegram:
         params = {"offset": offset, "timeout": 0} if offset else {}
         return self._api("getUpdates", params).get("result", [])
 
-    def owner_commands(self, owner_chat: int, offset: int | None) -> tuple[list[tuple[int, str]], int | None]:
-        """Comandos ('/pendencias', '/prazos', '/ajuda') mandados pelo DONO no chat privado. Mensagens de qualquer
-        outra pessoa ou de grupos são ignoradas. Devolve (comandos, próximo offset)."""
+    def owner_commands(self, owner_chat: int, offset: int | None) -> tuple[list[tuple[int, str, str]], int | None]:
+        """Comandos ('/pendencias', '/silenciar notas'...) mandados pelo DONO no chat privado. Mensagens de qualquer
+        outra pessoa ou de grupos são ignoradas. Devolve ([(id, comando, argumento)], próximo offset)."""
         cmds, nxt = [], offset
         for u in self.updates(offset):
             nxt = max(nxt or 0, u["update_id"] + 1)
             msg = u.get("message") or {}
             chat = msg.get("chat") or {}
-            text = (msg.get("text") or "").strip().split("@")[0].split(" ")[0].lower()
-            if chat.get("type") == "private" and chat.get("id") == owner_chat and text.startswith("/"):
-                cmds.append((u["update_id"], text))
+            words = (msg.get("text") or "").strip().split()
+            cmd = words[0].split("@")[0].lower() if words else ""
+            if chat.get("type") == "private" and chat.get("id") == owner_chat and cmd.startswith("/"):
+                cmds.append((u["update_id"], cmd, " ".join(words[1:2]).lower()))
         return cmds, nxt
 
     def pairing_chat(self, code: str, updates: list[dict] | None = None) -> dict | None:

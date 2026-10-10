@@ -23,7 +23,7 @@ def test_only_owner_private_commands_are_accepted(monkeypatch):
                upd(3, OWNER, "/prazos@nead_bot"), upd(4, OWNER, "oi"), upd(5, OWNER, "/PENDENCIAS")]
     monkeypatch.setattr(Telegram, "_api", lambda self, m, p: {"ok": True, "result": updates})
     cmds, nxt = Telegram("t").owner_commands(OWNER, None)
-    assert cmds == [(3, "/prazos"), (5, "/pendencias")] and nxt == 6
+    assert cmds == [(3, "/prazos", ""), (5, "/pendencias", "")] and nxt == 6
 
 
 def test_commands_answer_once_and_only_to_me(tmp_path):

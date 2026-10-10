@@ -479,13 +479,37 @@ class Collector:
     COMMANDS_HELP = ("Comandos (a resposta chega em até 15 minutos):\n"
                      "/pendencias — o que você ainda não entregou (atrasadas e próximos 7 dias)\n"
                      "/prazos — prazos da turma nos próximos 7 dias\n"
+                     "/silenciar TIPO — para de receber um tipo de aviso aqui (ex.: /silenciar confirmacoes)\n"
+                     "/ativar TIPO — volta a receber · /silenciados — o que está desligado\n"
                      "/ajuda — esta lista")
 
     def _commands(self, courses: list[dict], group_ids: set[int]) -> None:
         """Responde aos comandos que VOCÊ mandou ao robô (o envio só vai para o seu chat)."""
-        for update_id, cmd in self.commands:
+        from . import mute
+        for item in self.commands:
+            update_id, cmd, arg = (tuple(item) + ("",))[:3]
             key = f"cmd:{update_id}"
             if key in self.state.data.setdefault("seen", {}):
+                continue
+            if cmd in ("/silenciar", "/ativar", "/silenciados"):
+                self._seen(key)
+                muted = self.state.data.setdefault("muted", [])
+                name = mute.normalize(arg)
+                if cmd == "/silenciados":
+                    text = ("Silenciados no seu chat: " + ", ".join(sorted(muted)) if muted
+                            else "Nada silenciado: você recebe todos os tipos de aviso.") + "\n\n" + mute.help_text()
+                elif not name:
+                    text = (f"Não conheço o tipo '{h(arg)}'.\n\n" if arg else "") + mute.help_text()
+                elif cmd == "/silenciar":
+                    if name not in muted:
+                        muted.append(name)
+                    text = (f"🔕 <b>{name}</b> silenciado no seu chat ({mute.CATEGORIES[name][0]}). "
+                            f"O grupo da turma não muda. Para voltar: /ativar {name}")
+                else:
+                    if name in muted:
+                        muted.remove(name)
+                    text = f"🔔 <b>{name}</b> ativado de novo no seu chat."
+                self.notices.append(Notice(key, "me", "🤖", "NEAD Avisos", "", text, extra={"urgent": True}))
                 continue
             if cmd in ("/pendencias", "/pendências"):
                 self._my_digest(force_key=key)

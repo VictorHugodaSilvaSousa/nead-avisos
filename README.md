@@ -59,6 +59,11 @@ chega uma enxurrada de "novidades" antigas.
 **Pergunte ao robô quando quiser** (só você, no chat privado; a resposta chega em até 15 minutos):
 `/pendencias` (o que você ainda não entregou), `/prazos` (prazos da turma nos próximos 7 dias) e `/ajuda`.
 
+**Menos avisos no seu chat:** `/silenciar TIPO` desliga um tipo só no seu chat (o grupo da turma não muda), `/ativar
+TIPO` religa e `/silenciados` mostra o que está desligado. Tipos: `confirmacoes`, `notificacoes`, `atividades`,
+`prazos`, `perdidos`, `avisos`, `foruns`, `notas`, `mensagens`, `eventos` e `resumos`. Por exemplo,
+`/silenciar confirmacoes` para de mandar "Envio confirmado".
+
 ## Para o NEAD: plugin do Moodle (todos os alunos, sem instalar nada)
 
 A pasta [`moodle-plugin/neadavisos`](moodle-plugin/neadavisos) é um **plugin de notificação para o Moodle**. Com ele
