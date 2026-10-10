@@ -64,7 +64,7 @@ try {
     Unblock-File (Join-Path $Destino 'NEAD-Avisos.exe')     # integridade já conferida: sem o aviso do SmartScreen
     # Cópia do instalador para desinstalar depois. Gravada COM BOM: assim o PowerShell 5 lê os acentos do arquivo.
     # (No GitHub ele fica SEM BOM, porque o BOM quebra o 'irm | iex'.)
-    $fonte = Invoke-RestMethod "https://raw.githubusercontent.com/$repo/main/instalar.ps1"
+    $fonte = (Invoke-RestMethod "https://raw.githubusercontent.com/$repo/main/instalar.ps1").TrimStart([char]0xFEFF)
     [IO.File]::WriteAllText((Join-Path $Destino 'instalar.ps1'), $fonte, (New-Object Text.UTF8Encoding $true))
 
     Passo 'Criando atalhos (Menu Iniciar e Área de Trabalho)'
