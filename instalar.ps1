@@ -1,4 +1,4 @@
-﻿# Instalador do NEAD Avisos para Windows: um comando, sem precisar de administrador nem de Python.
+# Instalador do NEAD Avisos para Windows: um comando, sem precisar de administrador nem de Python.
 #
 #   irm https://raw.githubusercontent.com/VictorHugodaSilvaSousa/nead-avisos/main/instalar.ps1 | iex
 #
@@ -62,7 +62,10 @@ try {
     New-Item -ItemType Directory -Path $Destino -Force | Out-Null
     Move-Item (Join-Path $tmp 'NEAD-Avisos.exe') (Join-Path $Destino 'NEAD-Avisos.exe') -Force
     Unblock-File (Join-Path $Destino 'NEAD-Avisos.exe')     # integridade já conferida: sem o aviso do SmartScreen
-    if ($PSCommandPath) { Copy-Item $PSCommandPath (Join-Path $Destino 'instalar.ps1') -Force }
+    # Cópia do instalador para desinstalar depois. Gravada COM BOM: assim o PowerShell 5 lê os acentos do arquivo.
+    # (No GitHub ele fica SEM BOM, porque o BOM quebra o 'irm | iex'.)
+    $fonte = Invoke-RestMethod "https://raw.githubusercontent.com/$repo/main/instalar.ps1"
+    [IO.File]::WriteAllText((Join-Path $Destino 'instalar.ps1'), $fonte, (New-Object Text.UTF8Encoding $true))
 
     Passo 'Criando atalhos (Menu Iniciar e Área de Trabalho)'
     $shell = New-Object -ComObject WScript.Shell

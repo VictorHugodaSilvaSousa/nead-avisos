@@ -28,3 +28,18 @@ jobs:
           php -v | head -1
           find moodle-plugin -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null
           php moodle-plugin/testes-sem-moodle/harness.php
+      - name: Instaladores PowerShell (sintaxe; instalar.ps1 sem BOM, que quebraria o 'irm | iex')
+        shell: pwsh
+        run: |
+          $bytes = [IO.File]::ReadAllBytes('instalar.ps1')
+          if ($bytes[0] -eq 0xEF) { throw 'instalar.ps1 não pode ter BOM: quebra o irm | iex' }
+          foreach ($f in 'instalar.ps1', 'scripts/instalar-codigo.ps1') {
+            $t = $null; $e = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$t, [ref]$e)
+            if ($e.Count) { throw "$f tem erro de sintaxe: $($e[0].Message)" }
+          }
+          $s = Get-Content instalar.ps1 -Raw
+          $t = $null; $e = $null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($s, [ref]$t, [ref]$e)
+          if ($e.Count) { throw "instalar.ps1 como texto (irm | iex): $($e[0].Message)" }
+          Write-Host 'Instaladores OK'
