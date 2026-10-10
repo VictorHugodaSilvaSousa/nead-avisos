@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Estado (o que já foi avisado), CRIPTOGRAFADO em disco.
 
 O estado guarda o mínimo para não repetir avisos: identificadores, datas e "impressões digitais" (hashes) do

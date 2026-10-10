@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Segurança e sigilo: estado cifrado, mínimo de dados guardados, registros sem dado pessoal, links seguros."""
 
 import json

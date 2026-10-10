@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Assistente de configuração para quem não é da área técnica (abre ao dar dois cliques no NEAD-Avisos.exe).
 
 Cada pessoa usa o PRÓPRIO login do Moodle e o PRÓPRIO bot do Telegram. Nada de ninguém passa por outra pessoa.
@@ -226,7 +228,10 @@ PRIVACY = """Antes de começar, o que o NEAD Avisos faz com os seus dados:
     Gerenciador de Credenciais do Windows (ou nos Secrets do SEU GitHub, se escolher a nuvem).
   • Os avisos vão só para o SEU robô do Telegram. Nada é enviado ao autor do programa nem a terceiros.
   • O que fica guardado (o que já foi avisado) é criptografado; mensagens e comentários não ficam guardados.
-  • Para parar e apagar tudo: rode 'nead-avisos apagar-tudo'. Detalhes no arquivo SECURITY.md."""
+  • Para parar e apagar tudo: rode 'nead-avisos apagar-tudo'. Detalhes no arquivo SECURITY.md.
+
+NEAD Avisos — Copyright (C) 2026 Victor Hugo da Silva Sousa. Software livre sob a GNU GPL v3 ou posterior,
+SEM GARANTIA. Código e licença: https://github.com/VictorHugodaSilvaSousa/nead-avisos"""
 
 
 def main() -> int:

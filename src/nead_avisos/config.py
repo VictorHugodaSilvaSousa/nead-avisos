@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Configuração do NEAD Avisos.
 
 Valores comuns: arquivo .env da pasta do projeto (ou variáveis de ambiente — é assim na nuvem).

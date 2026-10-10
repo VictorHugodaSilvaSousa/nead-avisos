@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Envio pelo Telegram (chega no celular e no PC ao mesmo tempo). HTML com escape; nunca registra o token."""
 
 from __future__ import annotations

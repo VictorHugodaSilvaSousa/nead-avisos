@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Bugs corrigidos em 09/10/2026."""
 
 from datetime import datetime, timedelta, timezone

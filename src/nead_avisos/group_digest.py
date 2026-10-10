@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Grupo da turma em ritmo de resumo: em vez de uma mensagem por novidade, o grupo recebe um resumo organizado
 por disciplina em horários fixos (padrão 8h, 13h e 19h). Só o urgente chega na hora no grupo:
 prazo que vence HOJE, prazo alterado pelo professor e evento de hoje.

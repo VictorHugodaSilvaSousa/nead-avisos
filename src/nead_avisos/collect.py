@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Descobre o que há de novo no Moodle para o aluno e transforma em avisos.
 
 Tipos de aviso (audience: 'me' = só o seu chat; 'group' = também o grupo da turma):

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Comandos ao robô (/pendencias, /prazos, /ajuda): só do dono, só no chat privado, resposta só para ele."""
 
 from datetime import timedelta

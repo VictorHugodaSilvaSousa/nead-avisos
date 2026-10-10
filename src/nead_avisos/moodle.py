@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Cliente do Moodle pelo serviço do app oficial (moodle_mobile_app), SOMENTE LEITURA.
 
 - Login uma única vez (login/token.php) -> chave de acesso (token). A senha não é guardada.

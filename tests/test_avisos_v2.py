@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 from datetime import timedelta
 
 from nead_avisos.collect import Collector, fmt

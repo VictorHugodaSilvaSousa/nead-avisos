@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Empacota o plugin do Moodle num .zip instalável (pasta 'neadavisos/' na raiz, barras normais) + .sha256.
 
 Uso: python packaging/plugin_zip.py moodle-plugin/neadavisos dist/message_neadavisos.zip

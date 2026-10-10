@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Isola os testes: segredos num cofre em memória (nunca o Gerenciador de Credenciais real) e sem variáveis
 NEAD_AVISOS_* do ambiente."""
 

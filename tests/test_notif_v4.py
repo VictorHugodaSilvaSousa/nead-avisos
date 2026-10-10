@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Avisos mais claros: notificações do Moodle traduzidas, tempo restante, sem cópia dupla, botão certo, silêncio."""
 
 from datetime import timedelta

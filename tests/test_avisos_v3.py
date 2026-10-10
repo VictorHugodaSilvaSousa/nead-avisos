@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Avisos v3: tudo o que o professor faz (alterações em atividades, fóruns, notas, eventos)."""
 
 from datetime import timedelta

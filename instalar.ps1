@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 # Instalador do NEAD Avisos para Windows: um comando, sem precisar de administrador nem de Python.
 #
 #   irm https://raw.githubusercontent.com/VictorHugodaSilvaSousa/nead-avisos/main/instalar.ps1 | iex

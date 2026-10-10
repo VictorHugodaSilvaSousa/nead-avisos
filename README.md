@@ -160,8 +160,17 @@ O log fica em `data\avisos.log`. Para remover a tarefa: `scripts\uninstall-windo
 
 Comandos: `setup`, `set-telegram`, `chats`, `status` (salas acompanhadas e destino), `run [--dry-run]`.
 
-## Autoria
+## Autoria e licença
 
 **NEAD Avisos** foi idealizado e desenvolvido por **Victor Hugo da Silva Sousa** (TDS — NEAD/IFB), 2026.
-O plugin do Moodle (`moodle-plugin/neadavisos`) é distribuído sob a GNU GPL v3, como exige o Moodle, com o mesmo
-crédito de autoria em cada arquivo.
+
+Copyright (C) 2026 Victor Hugo da Silva Sousa.
+
+Este programa é software livre, sob a **GNU General Public License, versão 3 ou posterior** (GPL-3.0-or-later).
+O texto completo está em [LICENSE](LICENSE). Na prática:
+- qualquer pessoa ou instituição pode usar, estudar, copiar e modificar;
+- quem distribuir o programa, modificado ou não, **deve manter o aviso de autoria** e distribuir o código sob a
+  mesma licença;
+- não há garantia de qualquer tipo.
+
+O plugin do Moodle (`moodle-plugin/neadavisos`) segue a mesma licença, como o próprio Moodle.

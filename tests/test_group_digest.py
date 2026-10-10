@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Grupo da turma em ritmo de resumo (muita gente no grupo): resumo por disciplina em horários fixos;
 só o urgente chega na hora. O chat pessoal continua recebendo tudo na hora."""
 

@@ -1,4 +1,6 @@
-﻿# Cria (ou atualiza) a tarefa "NEAD-Avisos": verifica o Moodle a cada 15 minutos enquanto o PC estiver ligado.
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
+# Cria (ou atualiza) a tarefa "NEAD-Avisos": verifica o Moodle a cada 15 minutos enquanto o PC estiver ligado.
 # Uso:  powershell -ExecutionPolicy Bypass -File scripts\install-windows-schedule.ps1 [-Minutos 15]
 # Remover: powershell -ExecutionPolicy Bypass -File scripts\uninstall-windows-schedule.ps1
 # Se a versão na nuvem (GitHub Actions) estiver ativa, NÃO use as duas ao mesmo tempo (os avisos sairiam em dobro).

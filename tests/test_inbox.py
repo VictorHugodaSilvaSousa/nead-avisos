@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Caixa de entrada: toda mensagem recebida, notificações sem repetir assunto e verificação diária."""
 
 from datetime import timedelta

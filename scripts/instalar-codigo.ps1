@@ -1,4 +1,6 @@
-﻿# Prepara o NEAD Avisos a partir do CÓDIGO (para quem vai mexer no programa ou rodar sem o .exe).
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Victor Hugo da Silva Sousa
+# Prepara o NEAD Avisos a partir do CÓDIGO (para quem vai mexer no programa ou rodar sem o .exe).
 # Instala o que faltar e confere que tudo funciona:
 #   1. Python 3.12 (pelo winget, se não houver Python 3.11 ou mais novo);
 #   2. ambiente virtual .venv com as dependências nas versões testadas (constraints.txt);
