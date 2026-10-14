@@ -321,14 +321,16 @@ def _run(s: Settings, dry_run: bool) -> int:
             dests = [group_id]               # você já recebe o lembrete pessoal do mesmo prazo
         if is_muted(n, state.data.get("muted", [])):
             dests = [d for d in dests if d != s.telegram_chat_id]     # você silenciou esse tipo (/silenciar)
-        if group_id in dests and s.group_slots and not is_urgent_for_group(n):
+        # De madrugada, urgente que só vence daqui a 12h+ (o "Prazo HOJE" das 00:01) espera o resumo da manhã.
+        night_hold = quiet and (n.when is None or n.when - now > timedelta(hours=12))
+        if group_id in dests and s.group_slots and (not is_urgent_for_group(n) or night_hold):
             # Grupo em ritmo de resumo: entra na fila do próximo horário (não toca o celular de todo mundo agora).
             if n.key not in {e["key"] for e in group_queue}:
                 group_queue.append(digest_entry(n, tg.safe_link))
             dests = [d for d in dests if d != group_id]
         info = partial.get(n.key, {"done": [], "since": now.isoformat()})
         for chat in dests:
-            if chat not in info["done"] and tg.send(chat, n, silent=n.extra.get("quiet") or (quiet and not n.extra.get("urgent"))):
+            if chat not in info["done"] and tg.send(chat, n, silent=n.extra.get("quiet") or (quiet and (chat == group_id or not n.extra.get("urgent")))):
                 info["done"].append(chat)
         if all(chat in info["done"] for chat in dests):
             sent += 1

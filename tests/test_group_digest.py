@@ -17,7 +17,7 @@ TZ = ZoneInfo("America/Sao_Paulo")
 ME, GROUP = 111, -999
 
 
-def run_at(tmp_path, monkeypatch, when, notices):
+def run_at(tmp_path, monkeypatch, when, notices, quiet=None):
     sent = []
     monkeypatch.setattr(Telegram, "_api", lambda self, m, p: {"ok": True, "result": []} if m == "getUpdates"
                         else sent.append((p["chat_id"], p["text"])) or {"ok": True})
@@ -41,7 +41,7 @@ def run_at(tmp_path, monkeypatch, when, notices):
             return when.astimezone(tz) if tz else when
     monkeypatch.setattr(cli, "datetime", type("D", (), {"now": Clock.now, "fromisoformat": datetime.fromisoformat}))
     s = Settings()
-    s.data_dir, s.telegram_chat_id, s.telegram_group_id, s.quiet_hours = tmp_path, ME, GROUP, None
+    s.data_dir, s.telegram_chat_id, s.telegram_group_id, s.quiet_hours = tmp_path, ME, GROUP, quiet
     cli._run(s, dry_run=False)
     return sent
 
@@ -73,6 +73,15 @@ def test_urgent_goes_to_group_right_away(tmp_path, monkeypatch):
               Notice("duechange:6:abc", "group", "📅", "Prazo alterado: Tarefa 6", "BD II")]
     sent = run_at(tmp_path, monkeypatch, datetime(2026, 10, 10, 10, 0, tzinfo=TZ), urgent)
     assert [c for c, _ in sent].count(GROUP) == 2
+
+
+def test_midnight_due_today_waits_for_the_morning_summary_in_the_group(tmp_path, monkeypatch):
+    due = datetime(2026, 10, 14, 23, 59, tzinfo=TZ)
+    n = Notice("due:7:0", "group", "⏰", "Prazo HOJE: Tarefa 7", "BD II", when=due, extra={"urgent": True})
+    sent = run_at(tmp_path, monkeypatch, datetime(2026, 10, 14, 0, 1, tzinfo=TZ), [n], quiet=(22, 7))
+    assert [c for c, _ in sent] == [ME]                              # grupo não recebe nada de madrugada
+    sent = run_at(tmp_path, monkeypatch, datetime(2026, 10, 14, 8, 1, tzinfo=TZ), [], quiet=(22, 7))
+    assert [c for c, _ in sent] == [GROUP] and "Tarefa 7" in sent[0][1]
 
 
 def test_helpers():
