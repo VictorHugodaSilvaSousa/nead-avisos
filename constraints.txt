@@ -9,7 +9,7 @@ keyring==25.7.0
 more-itertools==11.1.0
 pycparser==3.0
 pywin32-ctypes==0.2.3
-truststore==0.10.4
+truststore==0.10.5
 tzdata==2026.5
 # testes e empacotamento
 pytest==9.1.1
