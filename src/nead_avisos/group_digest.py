@@ -2,7 +2,8 @@
 # Copyright (C) 2026 Victor Hugo da Silva Sousa
 """Grupo da turma em ritmo de resumo: em vez de uma mensagem por novidade, o grupo recebe um resumo organizado
 por disciplina em horários fixos (padrão 8h, 13h e 19h). Só o urgente chega na hora no grupo:
-prazo que vence HOJE, prazo alterado pelo professor e evento de hoje.
+prazo que vence HOJE, atividade nova ou alterada pelo professor (prazo, enunciado, arquivos, configuração)
+e evento de hoje ou alterado.
 
 O seu chat pessoal continua recebendo tudo na hora (este módulo só trata o que vai para o GRUPO).
 """
@@ -15,7 +16,9 @@ from datetime import datetime
 from .collect import Notice, fmt
 
 LIMIT = 3800                                   # folga sob o limite de 4.000 caracteres do Telegram
-URGENT_KINDS = {"duechange", "eventday", "eventchange"}
+# Atividade nova/alterada pelo professor também vai na hora, com os detalhes (pedido do representante);
+# de madrugada continua esperando o resumo da manhã (night_hold em cli._run).
+URGENT_KINDS = {"duechange", "eventday", "eventchange", "mod", "bulk", "edit", "cfg"}
 HEAD = "📬 <b>Novidades da turma</b>"
 
 

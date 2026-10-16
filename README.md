@@ -31,7 +31,7 @@ O que ele avisa:
 **Grupo da turma (opcional, ligado pelo representante: veja o [guia do representante](docs/representantes.md)):**
 recebe só o que é igual para todos (atividades e alterações, avisos, respostas do professor, eventos e prazos).
 Nunca recebe notas, notificações, mensagens ou entregas pessoais. Para não virar barulho, o grupo recebe **resumos por
-disciplina às 8h, 13h e 19h**; só o urgente (prazo que vence hoje, prazo alterado, evento de hoje) chega na hora.
+disciplina às 8h, 13h e 19h**; na hora chegam atividade nova ou alterada pelo professor (prazo, enunciado, arquivos, configuração), prazo que vence hoje e evento de hoje.
 O seu chat pessoal recebe tudo na hora.
 
 **Como chegam:** cada aviso diz quanto tempo falta para o prazo ("faltam 22 h") e tem um botão que leva direto

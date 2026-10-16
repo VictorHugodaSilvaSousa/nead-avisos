@@ -14,7 +14,7 @@ os avisos gerais do Moodle **sem instalar nada e sem passar senha**: basta entra
 | Eventos da sala (aula síncrona etc.) | Postagens de colegas nos fóruns |
 
 **Ritmo:** para o grupo não virar barulho, as novidades chegam em **resumos às 8h, 13h e 19h**, organizados por
-disciplina. Só o urgente chega na hora: prazo que vence hoje, prazo alterado e evento de hoje.
+disciplina. Chegam na hora: atividade nova ou alterada pelo professor, prazo que vence hoje e evento de hoje (de madrugada, esperam o resumo das 8h).
 
 ## Como ligar (uns 10 minutos)
 

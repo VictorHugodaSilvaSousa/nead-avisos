@@ -46,7 +46,7 @@ def run_at(tmp_path, monkeypatch, when, notices, quiet=None):
     return sent
 
 
-def news(i, course="Banco de Dados II", kind="mod", **extra):
+def news(i, course="Banco de Dados II", kind="post", **extra):     # post do professor: vai no resumo
     return Notice(f"{kind}:{i}", "group", "📝", f"Nova atividade: Tarefa {i}", course,
                   url=f"https://nead.ifb.edu.br/mod/assign/view.php?id={i}", extra=extra)
 
@@ -73,6 +73,22 @@ def test_urgent_goes_to_group_right_away(tmp_path, monkeypatch):
               Notice("duechange:6:abc", "group", "📅", "Prazo alterado: Tarefa 6", "BD II")]
     sent = run_at(tmp_path, monkeypatch, datetime(2026, 10, 10, 10, 0, tzinfo=TZ), urgent)
     assert [c for c, _ in sent].count(GROUP) == 2
+
+
+def test_new_and_changed_activities_go_to_group_right_away_with_details(tmp_path, monkeypatch):
+    items = [Notice("mod:7", "group", "📝", "Nova atividade: Tarefa 7", "BD II", "Entrega: 20/10 23:59"),
+             Notice("edit:8:abc", "group", "✏️", "Atividade alterada pelo professor: Tarefa 8", "BD II",
+                    "📎 Arquivo novo: roteiro.pdf"),
+             Notice("cfg:9:1", "group", "⚙️", "Configuração alterada: Tarefa 9", "BD II", "Vale conferir."),
+             Notice("bulk:mod:10,mod:11", "group", "📝", "2 novos itens publicados", "BD II", "• a\n• b")]
+    sent = run_at(tmp_path, monkeypatch, datetime(2026, 10, 10, 10, 0, tzinfo=TZ), items)
+    group = [t for c, t in sent if c == GROUP]
+    assert len(group) == 4 and "Entrega: 20/10" in group[0] and "roteiro.pdf" in group[1]
+    assert [c for c, _ in sent].count(ME) == 4                       # você continua recebendo tudo
+    run_at(tmp_path, monkeypatch, datetime(2026, 10, 10, 19, 5, tzinfo=TZ), [], quiet=(22, 7))   # resumo das 19h
+    night = [Notice("mod:12", "group", "📝", "Nova atividade: Tarefa 12", "BD II")]
+    sent = run_at(tmp_path, monkeypatch, datetime(2026, 10, 10, 23, 30, tzinfo=TZ), night, quiet=(22, 7))
+    assert [c for c, _ in sent] == [ME]                              # de madrugada o grupo não toca
 
 
 def test_midnight_due_today_waits_for_the_morning_summary_in_the_group(tmp_path, monkeypatch):
