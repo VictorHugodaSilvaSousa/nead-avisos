@@ -7,7 +7,7 @@ jaraco.context==6.1.2
 jaraco.functools==4.6.0
 keyring==25.7.0
 more-itertools==11.1.0
-pycparser==3.0
+pycparser==3.11
 pywin32-ctypes==0.2.3
 truststore==0.10.4
 tzdata==2026.5
